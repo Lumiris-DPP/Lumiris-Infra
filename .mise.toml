@@ -6,7 +6,7 @@ jq     = "1.7.1"
 mkcert = "1.4.4"
 age    = "1.2.1"
 sops   = "3.9.4"
-mprocs = "0.7.2"
+mprocs = "0.9.6"
 tmux   = "latest"
 
 [env]

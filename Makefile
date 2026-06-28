@@ -52,6 +52,7 @@ setup: ## Hosts + certs + .env (idempotent)
 .PHONY: dev
 dev: ## Lance infra + backend + front dans un TUI mprocs (q = quit, r = restart focused)
 	@command -v mise >/dev/null 2>&1 || { echo "[dev] mise absent — install: curl https://mise.run | sh"; exit 1; }
+	@$(SCRIPTS_DIR)/preflight-dev.sh
 	@mise exec -- mprocs -c mprocs.yaml
 
 .PHONY: up down restart ps logs

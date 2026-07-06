@@ -10,3 +10,7 @@ procs:
   front:
     cwd: ../Lumiris-Front
     shell: bun dev
+
+  stripe:
+    cwd: ../Lumiris-Backend
+    shell: 'if [ -f .env ]; then set -a; . ./.env; set +a; fi; command -v stripe >/dev/null 2>&1 || { echo ''[stripe] CLI non installé — https://docs.stripe.com/stripe-cli''; exec sleep infinity; }; [ -n "$STRIPE_SECRET_KEY" ] || { echo ''[stripe] STRIPE_SECRET_KEY absent du .env''; exec sleep infinity; }; exec stripe listen --api-key "$STRIPE_SECRET_KEY" --forward-to localhost:8080/api/stripe/webhook'

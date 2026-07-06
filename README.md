@@ -62,13 +62,14 @@ Ce target enchaine :
 make dev
 ```
 
-Lance [mprocs](https://github.com/pvolok/mprocs) avec 3 process (cf. [`mprocs.yaml`](mprocs.yaml)) :
+Lance [mprocs](https://github.com/pvolok/mprocs) avec 4 process (cf. [`mprocs.yaml`](mprocs.yaml)) :
 
-| Process   | Rôle                                                                 |
-| --------- | -------------------------------------------------------------------- |
-| `infra`   | `docker compose up` (Traefik + Postgres + Redis + MinIO + Mailhog)   |
-| `backend` | `./mvnw spring-boot:run` dans Lumiris-Backend                        |
-| `front`   | `bun dev` (Turbo orchestre les 4 apps) dans Lumiris-Front            |
+| Process   | Rôle                                                                        |
+| --------- | --------------------------------------------------------------------------- |
+| `infra`   | `docker compose up` (Traefik + Postgres + Redis + MinIO + Mailhog)          |
+| `backend` | `./mvnw spring-boot:run` dans Lumiris-Backend (port 8080)                   |
+| `front`   | `bun dev` (Turbo orchestre les 4 apps) dans Lumiris-Front (ports 3000-3003) |
+| `stripe`  | `stripe listen --forward-to :8080/api/stripe/webhook` (webhooks Stripe)     |
 
 Hotkeys mprocs : `↑↓` naviguer · `<Tab>` logs↔liste · `r` restart focus ·
 `x` kill focus · `s` start arrêté · `q` quit (envoie SIGTERM à tous les process,
@@ -76,6 +77,59 @@ les containers s'arrêtent proprement).
 
 > Pas d'auto-restart sur modif fichier : volontaire. Tu redémarres un process
 > à la main avec `r` quand tu en as besoin.
+
+> Le process `stripe` reste vivant avec un message si le CLI Stripe n'est pas
+> installé ou si `STRIPE_SECRET_KEY` manque du `.env` backend — il ne fait pas
+> planter le TUI. Détails : [Stripe (webhooks locaux)](#stripe-webhooks-locaux).
+
+### 5. Base de données — migrer + seed (au premier lancement)
+
+⚠️ **Flyway ne s'exécute PAS automatiquement au boot du backend** (Spring Boot 4).
+Sur une base neuve, il faut appliquer les migrations **et** les seeds une fois,
+sinon aucun utilisateur n'existe et la connexion est impossible :
+
+```bash
+cd ~/Dev/Lumiris/Lumiris-Backend
+set -a && . ./.env && set +a
+./mvnw flyway:migrate \
+  -Dflyway.locations=filesystem:src/main/resources/db/migration,filesystem:src/main/resources/db/seed
+```
+
+> Les seeds (`V2__seed_users`, `V6__seed_artisan_profiles`) vivent dans
+> `db/seed`, **séparés** de `db/migration`. Le plugin Flyway ne lit que
+> `db/migration` par défaut : il faut donc passer **les deux** chemins pour
+> obtenir les comptes de connexion. La commande est idempotente (re-jouable).
+
+### 6. Se connecter — comptes de démo (seed)
+
+Un compte par rôle est seedé pour le dev local (mot de passe = `<rôle>123`) :
+
+| Rôle       | Email                  | Mot de passe  | App concernée              |
+| ---------- | ---------------------- | ------------- | -------------------------- |
+| `ARTISAN`  | `artisan@lumiris.com`  | `artisan123`  | **Atelier** (client, 3003) |
+| `ADMIN`    | `admin@lumiris.com`    | `admin123`    | Back-office (admin, 3001)  |
+| `CONSUMER` | `client@lumiris.com`   | `client123`   | Site / mobile              |
+| `REPAIRER` | `repairer@lumiris.com` | `repairer123` | —                          |
+
+Vérifier que l'auth répond (retourne un JWT + l'utilisateur) :
+
+```bash
+curl -s http://localhost:8080/api/auth/login \
+  -H 'content-type: application/json' \
+  -d '{"email":"artisan@lumiris.com","password":"artisan123"}'
+```
+
+### Dépannage rapide
+
+| Symptôme                                                 | Cause probable / fix                                                                                   |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `front` meurt en `EADDRINUSE` (ports 3000-3003, 5432…)   | Une **autre stack Docker** squatte les ports. Stoppe-la avant (`docker compose -p <projet> down`).     |
+| Backend : `Unable to determine Dialect` / DB injoignable | Postgres pas démarré, ou port décalé. Le backend attend `localhost:5433` (cf. `Lumiris-Backend/.env`). |
+| Login `401` / aucun utilisateur                          | Base migrée mais **pas seedée** → refais l'étape 5 avec les **deux** `flyway.locations`.               |
+| Login `500 column "…" does not exist`                    | Base issue d'une ancienne lignée de migration. Reset : `make reset` (ou drop schema) puis étape 5.     |
+| Webhooks Stripe en échec de signature                    | `STRIPE_WEBHOOK_SECRET` du `.env` ≠ secret de `stripe listen`. Voir [Stripe](#stripe-webhooks-locaux). |
+
+Plus de cas : [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md).
 
 ## Stack locale
 
@@ -99,6 +153,40 @@ routes par Traefik vers leur cible.
 
 Voir [`docs/SERVICES.md`](docs/SERVICES.md) pour les credentials et les ports
 exposes sur l'hote.
+
+## Stripe (webhooks locaux)
+
+La facturation (abonnements ATELIER) passe par Stripe **en mode test**. Le
+backend écoute les webhooks sur `POST /api/stripe/webhook` ; en local on les
+forwarde avec le **CLI Stripe**, lancé automatiquement par le process `stripe`
+de `make dev`.
+
+**Pré-requis** (une fois) :
+
+1. Installer le [CLI Stripe](https://docs.stripe.com/stripe-cli) (fourni par
+   `mise` si listé dans `.mise.toml`, sinon installation manuelle).
+2. Le backend `Lumiris-Backend/.env` doit contenir les clés **test** :
+   `STRIPE_SECRET_KEY=sk_test_…`, `STRIPE_PUBLISHABLE_KEY=pk_test_…`,
+   `STRIPE_WEBHOOK_SECRET=whsec_…` (voir `.env.example`).
+
+Le process utilise `--api-key "$STRIPE_SECRET_KEY"` : **pas besoin de
+`stripe login`**. Le secret de signature imprimé par `stripe listen` est stable
+par compte et doit correspondre à `STRIPE_WEBHOOK_SECRET`.
+
+**Le lancer à la main** (hors `make dev`) :
+
+```bash
+cd ~/Dev/Lumiris/Lumiris-Backend
+stripe listen --api-key "$(grep -E '^STRIPE_SECRET_KEY=' .env | cut -d= -f2-)" \
+  --forward-to localhost:8080/api/stripe/webhook
+```
+
+**Tester** un événement de bout en bout (le backend doit répondre `[200]`) :
+
+```bash
+stripe trigger --api-key "$(grep -E '^STRIPE_SECRET_KEY=' Lumiris-Backend/.env | cut -d= -f2-)" \
+  customer.subscription.created
+```
 
 ## Phase 2 — Production
 

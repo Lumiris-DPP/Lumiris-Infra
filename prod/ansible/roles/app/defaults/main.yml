@@ -1,19 +1,10 @@
 ---
-app_dir: /opt/lumiris
-app_data_dir: /opt/lumiris/data
-app_backup_dir: /opt/lumiris/backups
+app_root: /srv/lumiris
+app_compose_dir: /srv/lumiris/Lumiris-Infra/prod
 app_compose_file: docker-compose.prod.yml
-app_image_tag: latest
 app_services:
   - lumiris-api
   - lumiris-site
+  - lumiris-app
   - lumiris-admin
-  - lumiris-client
-  - lumiris-mobile
-ghcr_owner: jubs-kan3ki
-vault_ghcr_username: ""
-vault_ghcr_pat: ""
-app_zero_downtime: false
 app_force_recreate: false
-app_healthcheck_retries: 30
-app_healthcheck_delay: 5

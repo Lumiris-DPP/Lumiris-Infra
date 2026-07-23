@@ -1,15 +1,11 @@
 ---
-# Run ONCE on a fresh VPS as root on :22; afterwards SSH is :2222 key-only.
-
-- name: Lumiris prod — first-boot bootstrap
+# First-boot server setup: hardening (swap/fail2ban/ufw/unattended) + Docker.
+# Run once as juba (passwordless sudo):  ansible-playbook playbooks/bootstrap.yml
+- name: Lumiris prod — bootstrap (hardening + Docker)
   hosts: lumiris_prod
   become: true
   gather_facts: true
-  vars:
-    ansible_user: root
-    ansible_port: 22
   tags: [bootstrap]
   roles:
     - {role: common, tags: [common]}
     - {role: docker, tags: [docker]}
-    - {role: infisical, tags: [infisical]}

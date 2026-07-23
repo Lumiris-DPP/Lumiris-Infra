@@ -1,0 +1,56 @@
+// Grafana Alloy — ships metrics to Grafana Cloud. Lightweight agent (~120 MB).
+// Storage + dashboards are hosted off-box in Grafana Cloud (free tier).
+
+// ── Remote write target (Grafana Cloud Prometheus) ─────────────────────────
+prometheus.remote_write "grafanacloud" {
+  endpoint {
+    url = sys.env("GRAFANA_CLOUD_PROM_URL")
+    basic_auth {
+      username = sys.env("GRAFANA_CLOUD_PROM_USER")
+      password = sys.env("GRAFANA_CLOUD_API_KEY")
+    }
+  }
+}
+
+// ── App metrics: Spring Boot Actuator Prometheus endpoint ──────────────────
+prometheus.scrape "api" {
+  targets = [
+    { __address__ = "api:8080", __metrics_path__ = "/actuator/prometheus", job = "lumiris-api" },
+  ]
+  forward_to      = [prometheus.remote_write.grafanacloud.receiver]
+  scrape_interval = "30s"
+}
+
+// ── Host metrics (CPU / RAM / disk / network) via the built-in node exporter ─
+prometheus.exporter.unix "host" {
+  procfs_path = "/host/proc"
+  sysfs_path  = "/host/sys"
+  rootfs_path = "/rootfs"
+}
+
+prometheus.scrape "host" {
+  targets         = prometheus.exporter.unix.host.targets
+  forward_to      = [prometheus.remote_write.grafanacloud.receiver]
+  scrape_interval = "30s"
+}
+
+// ── OPTIONAL: ship container logs to Grafana Cloud Loki ────────────────────
+// Free-tier log quota is small; uncomment only if you want centralized logs.
+// Requires GRAFANA_CLOUD_LOKI_URL + GRAFANA_CLOUD_LOKI_USER in .env.prod, and
+// mounting /var/run/docker.sock into the alloy service.
+//
+// discovery.docker "containers" { host = "unix:///var/run/docker.sock" }
+// loki.source.docker "containers" {
+//   host       = "unix:///var/run/docker.sock"
+//   targets    = discovery.docker.containers.targets
+//   forward_to = [loki.write.grafanacloud.receiver]
+// }
+// loki.write "grafanacloud" {
+//   endpoint {
+//     url = sys.env("GRAFANA_CLOUD_LOKI_URL")
+//     basic_auth {
+//       username = sys.env("GRAFANA_CLOUD_LOKI_USER")
+//       password = sys.env("GRAFANA_CLOUD_API_KEY")
+//     }
+//   }
+// }

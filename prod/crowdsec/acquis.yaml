@@ -1,0 +1,8 @@
+# CrowdSec log acquisition — reads Traefik's JSON access logs (from the
+# container's stdout via the docker socket) and feeds them to the traefik
+# parsers/scenarios for attack detection.
+source: docker
+container_name:
+  - lumiris-traefik
+labels:
+  type: traefik

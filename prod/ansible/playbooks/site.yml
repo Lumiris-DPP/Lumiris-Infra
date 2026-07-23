@@ -1,13 +1,5 @@
 ---
-- name: Lumiris prod — full converge
-  hosts: lumiris_prod
-  become: true
-  gather_facts: true
-  tags: [site]
-  roles:
-    - {role: common, tags: [common]}
-    - {role: docker, tags: [docker]}
-    - {role: infisical, tags: [infisical]}
-    - {role: traefik, tags: [traefik]}
-    - {role: monitoring, tags: [monitoring]}
-    - {role: app, tags: [app]}
+# Full converge = server setup + app deploy, composed from the two focused
+# playbooks (single source of truth per stage). Run: ansible-playbook playbooks/site.yml
+- import_playbook: bootstrap.yml
+- import_playbook: deploy.yml

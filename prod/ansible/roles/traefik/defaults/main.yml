@@ -1,6 +1,0 @@
----
-traefik_config_dir: /etc/traefik
-traefik_acme_dir: /etc/traefik/acme
-traefik_dynamic_dir: /etc/traefik/dynamic
-traefik_owner: root
-traefik_group: root

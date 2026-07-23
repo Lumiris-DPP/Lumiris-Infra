@@ -1,7 +1,19 @@
 ---
+# Traefik static config WITH the CrowdSec bouncer plugin enabled.
+# Used only by the docker-compose.crowdsec.yml overlay (mounted over traefik.yml).
+# Identical to traefik.yml except: the experimental plugin declaration and the
+# `crowdsec@docker` middleware added to the websecure entrypoint (applies to ALL
+# routers at once — no per-service label changes needed).
+
 global:
   checkNewVersion: false
   sendAnonymousUsage: false
+
+experimental:
+  plugins:
+    crowdsec:
+      moduleName: github.com/maxlerebourg/crowdsec-bouncer-traefik-plugin
+      version: v1.4.2
 
 entryPoints:
   web:
@@ -20,9 +32,9 @@ entryPoints:
       middlewares:
         - security-headers@file
         - compress@file
+        - crowdsec@docker
     http3: {}
   ping:
-    # Internal health only — bound to 127.0.0.1 by the compose port mapping.
     address: ":8082"
 
 providers:
@@ -57,10 +69,7 @@ accessLog:
 certificatesResolvers:
   letsencrypt:
     acme:
-      # Static config is NOT env-interpolated by Traefik — keep this literal.
       email: ops@lumiris.eu
-      # Must match the mounted volume `traefik-acme:/letsencrypt` (fixes the
-      # previous mismatch that re-issued certs on every recreate).
       storage: /letsencrypt/acme.json
       httpChallenge:
         entryPoint: web

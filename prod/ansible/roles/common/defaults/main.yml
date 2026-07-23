@@ -5,10 +5,11 @@ common_swap_size_mb: 2048
 common_swap_file: /var/swap
 common_unattended_upgrades: true
 
-ssh_port: 2222
-ssh_allowed_users: [ansible]
+common_harden_ssh: false          # when true, rewrites sshd_config (see ssh.yml)
+ssh_port: 22
+ssh_allowed_users: [juba]
 ssh_password_authentication: false
-ssh_permit_root_login: "no"
+ssh_permit_root_login: "prohibit-password"
 ssh_max_auth_tries: 3
 
 ufw_default_input_policy: deny

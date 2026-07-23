@@ -1,41 +1,35 @@
 ---
-- name: Ensure app dirs exist
-  ansible.builtin.file:
-    path: "{{ item }}"
-    state: directory
-    owner: "{{ infisical_runtime_user }}"
-    group: "{{ infisical_runtime_user }}"
-    mode: "0750"
+# Runs as juba (no become): juba is in the docker + lumiris groups and can write
+# to /srv/lumiris and drive Docker directly.
+
+- name: Sync repositories to the server (Docker build context)
+  ansible.posix.synchronize:
+    src: "{{ lumiris_src_root }}/{{ item }}/"
+    dest: "{{ app_root }}/{{ item }}/"
+    delete: true
+    recursive: true
+    rsync_opts:
+      - "--exclude=.git"
+      - "--exclude=node_modules"
+      - "--exclude=.next"
+      - "--exclude=.turbo"
+      - "--exclude=target"
+      - "--exclude=dist"
+      - "--exclude=out"
+      - "--exclude=*.log"
+      - "--exclude=.env"
+      - "--exclude=.env.prod"
   loop:
-    - "{{ app_dir }}"
-    - "{{ app_data_dir }}"
-    - "{{ app_backup_dir }}"
-    - "{{ app_dir }}/traefik-prod"
-    - "{{ app_dir }}/traefik-prod/dynamic"
-    - "{{ app_dir }}/monitoring-prod"
+    - Lumiris-Front
+    - Lumiris-Backend
+    - Lumiris-Infra
 
-- name: Sync compose stack
+- name: Render runtime env from the SOPS-encrypted secrets file
   ansible.builtin.copy:
-    src: "{{ playbook_dir }}/../../docker-compose.prod.yml"
-    dest: "{{ app_dir }}/{{ app_compose_file }}"
-    owner: "{{ infisical_runtime_user }}"
-    group: "{{ infisical_runtime_user }}"
-    mode: "0640"
-
-- name: Login to GHCR
-  community.docker.docker_login:
-    registry_url: ghcr.io
-    username: "{{ vault_ghcr_username }}"
-    password: "{{ vault_ghcr_pat }}"
-    reauthorize: false
+    content: "{{ lookup('community.sops.sops', app_sops_env_file) }}"
+    dest: "{{ app_env_file }}"
+    mode: "0600"
   no_log: true
 
-- name: Bring stack up (Infisical-wrapped compose)
+- name: Build + start the stack
   ansible.builtin.include_tasks: compose-up.yml
-
-- name: Wait for healthchecks
-  ansible.builtin.include_tasks: healthcheck.yml
-
-- name: Zero-downtime rotation
-  ansible.builtin.include_tasks: zero-downtime.yml
-  when: app_zero_downtime | bool

@@ -1,45 +1,41 @@
 ---
-# Secrets live in `vault.yml` (sops-encrypted).
+# Self-hosted single-server deploy. Runtime secrets are NOT here — they live in the
+# SOPS-encrypted prod/secrets/prod.env.sops, decrypted into .env.prod at deploy time.
 
 env: prod
-
 lumiris_domain: lumiris.eu
 lumiris_acme_email: ops@lumiris.eu
 
-ssh_port: 2222
-ssh_allowed_users:
-  - ansible
-ssh_password_authentication: false
-ssh_permit_root_login: "no"
+# ── Connection: juba + passwordless sudo, standard SSH port ──────────────────
+# `become` is set per-play (true for setup, false for the app deploy which runs
+# as juba directly — juba is in the docker + lumiris groups).
 
-admin_users:
-  - name: ansible
-    groups: [sudo, docker]
-    ssh_keys:
-      # Replace with the public key matching ~/.ssh/lumiris_prod_deploy.
-      - "ssh-ed25519 AAAA... ansible@lumiris"
+# ── Host hardening (conservative on a shared / prof-managed server) ──────────
+common_harden_ssh: false          # do NOT rewrite the prof's sshd_config / change port
+admin_users: []                   # juba already exists; manage no extra users
+common_swap_size_mb: 2048
 
+ufw_default_input_policy: deny
 ufw_allowed_ports:
-  - {port: 2222, proto: tcp, comment: "SSH"}
-  - {port: 80, proto: tcp, comment: "HTTP (ACME challenge + redirect)"}
+  - {port: 22, proto: tcp, comment: "SSH"}
+  - {port: 80, proto: tcp, comment: "HTTP (ACME + redirect)"}
   - {port: 443, proto: tcp, comment: "HTTPS"}
 
-docker_log_max_size: "50m"
+# ── Docker ───────────────────────────────────────────────────────────────────
+docker_users: [juba]
+docker_log_max_size: "20m"
 docker_log_max_file: 5
-docker_default_address_pools:
-  - {base: "172.30.0.0/16", size: 24}
 
-infisical_api_url: https://eu.infisical.com
-infisical_project_slug: lumiris
-infisical_env: prod
-infisical_identity_dir: /etc/infisical
-infisical_runtime_user: lumiris
-
-app_dir: /opt/lumiris
+# ── App deploy — build images locally on the box from the synced repos ───────
+# lumiris_src_root resolves to ~/Dev/Lumiris on the Ansible controller (your machine).
+lumiris_src_root: "{{ playbook_dir }}/../../../.."
+app_root: /srv/lumiris                                 # the 3 repos are synced here
+app_compose_dir: /srv/lumiris/Lumiris-Infra/prod
 app_compose_file: docker-compose.prod.yml
-app_image_tag: "{{ lookup('env', 'IMAGE_TAG') | default('latest', true) }}"
-ghcr_owner: jubs-kan3ki
 
-backup_postgres_dump_path: /opt/lumiris/backups
-backup_r2_bucket: lumiris-backups
-backup_keep_days: 14
+# Runtime secrets: SOPS-encrypted file, decrypted on the controller at deploy time.
+app_sops_env_file: "{{ lumiris_src_root }}/Lumiris-Infra/prod/secrets/prod.env.sops"
+app_env_file: "{{ app_compose_dir }}/.env.prod"
+
+app_healthcheck_retries: 40
+app_healthcheck_delay: 5

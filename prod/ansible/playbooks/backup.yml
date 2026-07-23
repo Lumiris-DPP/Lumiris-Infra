@@ -1,47 +1,32 @@
 ---
+# Local Postgres backup (gzipped dump, kept N days) under /srv/lumiris/backups.
+# Run as juba:  ansible-playbook playbooks/backup.yml
 - name: Lumiris prod — backup
   hosts: lumiris_prod
-  become: true
-  gather_facts: false
+  become: false
+  gather_facts: true
   tags: [backup]
+  vars:
+    backup_dir: /srv/lumiris/backups
+    backup_keep_days: 14
   tasks:
     - name: Ensure backups directory exists
       ansible.builtin.file:
-        path: "{{ backup_postgres_dump_path }}"
+        path: "{{ backup_dir }}"
         state: directory
-        owner: "{{ infisical_runtime_user }}"
-        group: "{{ infisical_runtime_user }}"
         mode: "0750"
 
-    - name: Run pg_dump via the running api container (uses live SPRING_DATASOURCE_URL)
-      ansible.builtin.command: >
-        docker compose -f {{ app_dir }}/{{ app_compose_file }} exec -T lumiris-api
-        sh -c 'pg_dump "$SPRING_DATASOURCE_URL" | gzip'
-      args:
-        chdir: "{{ app_dir }}"
+    - name: pg_dump from the postgres container → gzip
+      ansible.builtin.shell:
+        cmd: >-
+          docker exec lumiris-postgres sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"'
+          | gzip > {{ backup_dir }}/lumiris-{{ ansible_date_time.iso8601_basic_short }}.sql.gz
       register: dump_result
       changed_when: dump_result.rc == 0
-      no_log: true
 
-    - name: Persist encrypted dump to disk
-      ansible.builtin.copy:
-        content: "{{ dump_result.stdout }}"
-        dest: "{{ backup_postgres_dump_path }}/lumiris-{{ ansible_date_time.iso8601_basic_short }}.sql.gz"
-        owner: "{{ infisical_runtime_user }}"
-        group: "{{ infisical_runtime_user }}"
-        mode: "0600"
-      no_log: true
-
-    - name: Upload to R2
-      ansible.builtin.command: >
-        rclone copy {{ backup_postgres_dump_path }}/lumiris-{{ ansible_date_time.iso8601_basic_short }}.sql.gz
-        r2:{{ backup_r2_bucket }}/
-      register: rclone_result
-      changed_when: rclone_result.rc == 0
-
-    - name: Prune local dumps older than backup_keep_days — {{ backup_keep_days }}
+    - name: Prune dumps older than {{ backup_keep_days }} days
       ansible.builtin.find:
-        paths: "{{ backup_postgres_dump_path }}"
+        paths: "{{ backup_dir }}"
         age: "{{ backup_keep_days }}d"
         patterns: "lumiris-*.sql.gz"
       register: stale_dumps

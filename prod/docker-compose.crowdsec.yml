@@ -1,0 +1,51 @@
+# WAF overlay — CrowdSec IPS + Traefik bouncer plugin.
+# STAGED on purpose: enable only after the base stack is confirmed healthy, so a
+# WAF misconfiguration can never brick the first deploy.
+#
+# Enable:
+#   docker compose --env-file .env.prod \
+#     -f docker-compose.prod.yml -f docker-compose.crowdsec.yml up -d
+#
+# Needs CROWDSEC_BOUNCER_KEY in .env.prod (shared secret; `openssl rand -hex 32`).
+
+services:
+  crowdsec:
+    image: crowdsecurity/crowdsec:${CROWDSEC_VERSION:-v1.6.4}
+    container_name: lumiris-crowdsec
+    restart: unless-stopped
+    environment:
+      COLLECTIONS: "crowdsecurity/traefik crowdsecurity/http-cve crowdsecurity/base-http-scenarios"
+      # Pre-registers a bouncer named "traefik" with this key (matches the plugin).
+      BOUNCER_KEY_traefik: ${CROWDSEC_BOUNCER_KEY}
+    volumes:
+      - ./crowdsec/acquis.yaml:/etc/crowdsec/acquis.yaml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - crowdsec_data:/var/lib/crowdsec/data
+    networks: [lumiris_prod]
+    deploy:
+      resources:
+        limits: {cpus: '0.5', memory: 200M}
+    logging:
+      driver: json-file
+      options: {max-size: '10m', max-file: '3'}
+
+  # Override Traefik: swap to the plugin-enabled static config + define the
+  # `crowdsec` bouncer middleware (labels interpolate the key from .env.prod).
+  traefik:
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik-prod/traefik.crowdsec.yml:/etc/traefik/traefik.yml:ro
+      - ./traefik-prod/dynamic:/etc/traefik/dynamic:ro
+      - traefik-acme:/letsencrypt
+    labels:
+      - traefik.enable=true
+      - traefik.http.middlewares.crowdsec.plugin.crowdsec.enabled=true
+      - traefik.http.middlewares.crowdsec.plugin.crowdsec.crowdsecMode=stream
+      - traefik.http.middlewares.crowdsec.plugin.crowdsec.crowdsecLapiScheme=http
+      - traefik.http.middlewares.crowdsec.plugin.crowdsec.crowdsecLapiHost=crowdsec:8080
+      - traefik.http.middlewares.crowdsec.plugin.crowdsec.crowdsecLapiKey=${CROWDSEC_BOUNCER_KEY}
+    depends_on:
+      - crowdsec
+
+volumes:
+  crowdsec_data:

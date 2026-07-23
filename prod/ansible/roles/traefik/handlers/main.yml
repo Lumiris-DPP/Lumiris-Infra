@@ -1,9 +1,0 @@
----
-- name: Restart traefik container
-  community.docker.docker_compose_v2:
-    project_src: "{{ app_dir }}"
-    files:
-      - "{{ app_compose_file }}"
-    services:
-      - traefik
-    state: restarted

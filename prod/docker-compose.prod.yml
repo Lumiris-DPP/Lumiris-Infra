@@ -1,23 +1,30 @@
-# INERT until VPS bootstrapped; env injected via `infisical run -- docker compose ...`.
+# Lumiris — production stack (self-hosted, single server).
+# Datastores (postgres/redis/minio) run ON the box; images are built locally
+# from the sibling repos. Bring up with:
+#   docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
+#
+# WAF (CrowdSec) lives in the separate overlay docker-compose.crowdsec.yml and is
+# enabled deliberately AFTER the base stack is confirmed healthy.
 
 x-logging: &default-logging
   driver: json-file
   options:
-    max-size: '50m'
+    max-size: '20m'
     max-file: '5'
 
-x-app-restart: &app-restart
+x-restart: &restart
   restart: unless-stopped
 
 services:
+  # ── Edge / reverse proxy + TLS ──────────────────────────────────────────────
   traefik:
-    image: traefik:${TRAEFIK_VERSION:-v3.2}
+    image: traefik:${TRAEFIK_VERSION:-v3.5}
     container_name: lumiris-traefik
-    <<: *app-restart
+    <<: *restart
     ports:
       - '80:80'
       - '443:443'
-      - '127.0.0.1:8082:8082'
+      - '127.0.0.1:8082:8082' # ping/health, localhost only
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./traefik-prod/traefik.yml:/etc/traefik/traefik.yml:ro
@@ -31,41 +38,141 @@ services:
       retries: 5
     deploy:
       resources:
-        limits:
-          cpus: '0.5'
-          memory: 256M
+        limits: {cpus: '0.5', memory: 200M}
     logging: *default-logging
 
+  # ── Datastores ──────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:${POSTGRES_VERSION:-17-alpine}
+    container_name: lumiris-postgres
+    <<: *restart
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-lumiris}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks: [lumiris_prod] # no host port — internal only
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB:-lumiris}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    deploy:
+      resources:
+        limits: {cpus: '1.0', memory: 400M}
+    logging: *default-logging
+
+  redis:
+    image: redis:${REDIS_VERSION:-7.4-alpine}
+    container_name: lumiris-redis
+    <<: *restart
+    command: ['redis-server', '/usr/local/etc/redis/redis.conf', '--requirepass', '${REDIS_PASSWORD}']
+    volumes:
+      - ./redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+      - redis_data:/data
+    networks: [lumiris_prod] # internal only
+    healthcheck:
+      test: ['CMD', 'redis-cli', '-a', '${REDIS_PASSWORD}', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    deploy:
+      resources:
+        limits: {cpus: '0.5', memory: 96M}
+    logging: *default-logging
+
+  minio:
+    image: minio/minio:${MINIO_VERSION:-RELEASE.2024-11-07T00-52-20Z}
+    container_name: lumiris-minio
+    <<: *restart
+    command: ['server', '/data', '--console-address', ':9001']
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes:
+      - minio_data:/data
+    networks: [lumiris_prod] # internal only (no public console/API)
+    healthcheck:
+      test: ['CMD', 'mc', 'ready', 'local']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits: {cpus: '0.5', memory: 300M}
+    logging: *default-logging
+
+  # ── Backend API ─────────────────────────────────────────────────────────────
   lumiris-api:
-    image: ghcr.io/${GHCR_OWNER:-jubs-kan3ki}/lumiris-api:${IMAGE_TAG:-latest}
-    <<: *app-restart
+    image: lumiris-api:local
+    build:
+      context: ../../Lumiris-Backend
+      dockerfile: Dockerfile
+    container_name: lumiris-api
+    <<: *restart
     networks: [lumiris_prod]
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      minio: {condition: service_healthy}
     environment:
       SPRING_PROFILES_ACTIVE: prod
       SERVER_PORT: '8080'
+      # Cap the JVM so it can't starve postgres/minio/fronts on a 3.8 GB box.
+      JAVA_TOOL_OPTIONS: '-XX:MaxRAMPercentage=65 -XX:InitialRAMPercentage=30 -XX:+UseG1GC'
+      # Datastore
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-lumiris}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+      FLYWAY_LOCATIONS: ${FLYWAY_LOCATIONS:-classpath:db/migration}
+      # Redis (cache)
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      # Sentry (backend error monitoring)
+      SENTRY_DSN: ${SENTRY_DSN_API:-}
+      SENTRY_ENVIRONMENT: production
+      # Auth + CORS
+      JWT_SECRET: ${JWT_SECRET}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
+      # Object storage (internal MinIO). The backend creates the bucket on startup
+      # (MinioConfig), so no init job is needed.
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      MINIO_BUCKET: ${MINIO_BUCKET:-lumiris-uploads}
+      # Stripe
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
+      STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
+      STRIPE_BOOTSTRAP_CATALOG: ${STRIPE_BOOTSTRAP_CATALOG:-true}
+      STRIPE_PORTAL_RETURN_URL: ${STRIPE_PORTAL_RETURN_URL}
+      STRIPE_PRODUCT_SOLO: ${STRIPE_PRODUCT_SOLO}
+      STRIPE_PRODUCT_STUDIO: ${STRIPE_PRODUCT_STUDIO}
+      STRIPE_PRODUCT_MAISON: ${STRIPE_PRODUCT_MAISON}
+      STRIPE_PRODUCT_ATELIER_PLUS: ${STRIPE_PRODUCT_ATELIER_PLUS}
+      STRIPE_PRODUCT_LOCAL: ${STRIPE_PRODUCT_LOCAL}
+      # Mail
+      MAIL_HOST: ${MAIL_HOST}
+      MAIL_PORT: ${MAIL_PORT:-587}
+      MAIL_USERNAME: ${MAIL_USERNAME}
+      MAIL_PASSWORD: ${MAIL_PASSWORD}
+      MAIL_FROM: ${MAIL_FROM:-no-reply@lumiris.eu}
+      # Blockchain (optional; anchoring fails silently if unfunded)
+      BLOCKCHAIN_RPC_URL: ${BLOCKCHAIN_RPC_URL}
+      BLOCKCHAIN_WALLET_PRIVATE_KEY: ${BLOCKCHAIN_WALLET_PRIVATE_KEY}
+      GEOCODING_USER_AGENT: ${GEOCODING_USER_AGENT:-lumiris-prod}
     healthcheck:
       test: ['CMD', 'wget', '-qO-', 'http://localhost:8080/actuator/health/readiness']
       interval: 15s
       timeout: 5s
       retries: 10
-      start_period: 45s
+      start_period: 60s
     deploy:
-      replicas: 1
-      update_config:
-        parallelism: 1
-        order: start-first
-        failure_action: rollback
-        delay: 15s
-      restart_policy:
-        condition: on-failure
-        max_attempts: 3
       resources:
-        limits:
-          cpus: '1.5'
-          memory: 1G
-        reservations:
-          cpus: '0.25'
-          memory: 256M
+        limits: {cpus: '1.5', memory: 1024M}
+        reservations: {cpus: '0.25', memory: 256M}
     logging: *default-logging
     labels:
       - traefik.enable=true
@@ -73,18 +180,23 @@ services:
       - traefik.http.routers.api.rule=Host(`api.${DOMAIN:-lumiris.eu}`)
       - traefik.http.routers.api.entrypoints=websecure
       - traefik.http.routers.api.tls.certresolver=letsencrypt
-      - traefik.http.routers.api.middlewares=security-headers@file,compress@file,rate-limit-api@file,cf-trust@file
+      - traefik.http.routers.api.middlewares=security-headers@file,compress@file,rate-limit-api@file
       - traefik.http.services.api.loadbalancer.server.port=8080
       - traefik.http.services.api.loadbalancer.healthcheck.path=/actuator/health/readiness
-      - traefik.http.services.api.loadbalancer.healthcheck.interval=15s
 
+  # ── Front-ends (Next.js standalone; API URL baked at build) ─────────────────
   lumiris-site:
-    image: ghcr.io/${GHCR_OWNER:-jubs-kan3ki}/lumiris-site:${IMAGE_TAG:-latest}
-    <<: *app-restart
+    image: lumiris-site:local
+    build:
+      context: ../../Lumiris-Front
+      dockerfile: apps/site/Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE_URL: https://api.${DOMAIN:-lumiris.eu}
+        NEXT_PUBLIC_SENTRY_DSN: ${SENTRY_DSN_SITE:-}
+    container_name: lumiris-site
+    <<: *restart
     networks: [lumiris_prod]
-    environment:
-      NODE_ENV: production
-      PORT: '3000'
+    environment: {NODE_ENV: production, PORT: '3000'}
     depends_on: [lumiris-api]
     healthcheck:
       test: ['CMD', 'wget', '-qO-', 'http://localhost:3000/']
@@ -93,12 +205,8 @@ services:
       retries: 5
       start_period: 20s
     deploy:
-      replicas: 1
-      update_config: {parallelism: 1, order: start-first, failure_action: rollback, delay: 10s}
-      restart_policy: {condition: on-failure, max_attempts: 3}
       resources:
-        limits: {cpus: '1.0', memory: 512M}
-        reservations: {cpus: '0.1', memory: 128M}
+        limits: {cpus: '1.0', memory: 320M}
     logging: *default-logging
     labels:
       - traefik.enable=true
@@ -106,78 +214,22 @@ services:
       - traefik.http.routers.site.rule=Host(`${DOMAIN:-lumiris.eu}`) || Host(`www.${DOMAIN:-lumiris.eu}`)
       - traefik.http.routers.site.entrypoints=websecure
       - traefik.http.routers.site.tls.certresolver=letsencrypt
-      - traefik.http.routers.site.middlewares=security-headers@file,compress@file,cf-trust@file
+      - traefik.http.routers.site.middlewares=security-headers@file,compress@file
       - traefik.http.services.site.loadbalancer.server.port=3000
 
-  lumiris-admin:
-    image: ghcr.io/${GHCR_OWNER:-jubs-kan3ki}/lumiris-admin:${IMAGE_TAG:-latest}
-    <<: *app-restart
+  # The client app → app.lumiris.eu (renamed from the old `client.` subdomain)
+  lumiris-app:
+    image: lumiris-app:local
+    build:
+      context: ../../Lumiris-Front
+      dockerfile: apps/client/Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE_URL: https://api.${DOMAIN:-lumiris.eu}
+        NEXT_PUBLIC_SENTRY_DSN: ${SENTRY_DSN_CLIENT:-}
+    container_name: lumiris-app
+    <<: *restart
     networks: [lumiris_prod]
-    environment:
-      NODE_ENV: production
-      PORT: '3001'
-    depends_on: [lumiris-api]
-    healthcheck:
-      test: ['CMD', 'wget', '-qO-', 'http://localhost:3001/']
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 20s
-    deploy:
-      replicas: 1
-      update_config: {parallelism: 1, order: start-first, failure_action: rollback, delay: 10s}
-      restart_policy: {condition: on-failure, max_attempts: 3}
-      resources:
-        limits: {cpus: '1.0', memory: 512M}
-        reservations: {cpus: '0.1', memory: 128M}
-    logging: *default-logging
-    labels:
-      - traefik.enable=true
-      - traefik.docker.network=lumiris_prod
-      - traefik.http.routers.admin.rule=Host(`admin.${DOMAIN:-lumiris.eu}`)
-      - traefik.http.routers.admin.entrypoints=websecure
-      - traefik.http.routers.admin.tls.certresolver=letsencrypt
-      - traefik.http.routers.admin.middlewares=security-headers@file,compress@file,cf-trust@file
-      - traefik.http.services.admin.loadbalancer.server.port=3001
-
-  lumiris-mobile:
-    image: ghcr.io/${GHCR_OWNER:-jubs-kan3ki}/lumiris-mobile:${IMAGE_TAG:-latest}
-    <<: *app-restart
-    networks: [lumiris_prod]
-    environment:
-      NODE_ENV: production
-      PORT: '3002'
-    depends_on: [lumiris-api]
-    healthcheck:
-      test: ['CMD', 'wget', '-qO-', 'http://localhost:3002/']
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 20s
-    deploy:
-      replicas: 1
-      update_config: {parallelism: 1, order: start-first, failure_action: rollback, delay: 10s}
-      restart_policy: {condition: on-failure, max_attempts: 3}
-      resources:
-        limits: {cpus: '1.0', memory: 512M}
-        reservations: {cpus: '0.1', memory: 128M}
-    logging: *default-logging
-    labels:
-      - traefik.enable=true
-      - traefik.docker.network=lumiris_prod
-      - traefik.http.routers.mobile.rule=Host(`mobile.${DOMAIN:-lumiris.eu}`)
-      - traefik.http.routers.mobile.entrypoints=websecure
-      - traefik.http.routers.mobile.tls.certresolver=letsencrypt
-      - traefik.http.routers.mobile.middlewares=security-headers@file,compress@file,cf-trust@file
-      - traefik.http.services.mobile.loadbalancer.server.port=3002
-
-  lumiris-client:
-    image: ghcr.io/${GHCR_OWNER:-jubs-kan3ki}/lumiris-client:${IMAGE_TAG:-latest}
-    <<: *app-restart
-    networks: [lumiris_prod]
-    environment:
-      NODE_ENV: production
-      PORT: '3003'
+    environment: {NODE_ENV: production, PORT: '3003'}
     depends_on: [lumiris-api]
     healthcheck:
       test: ['CMD', 'wget', '-qO-', 'http://localhost:3003/']
@@ -186,71 +238,49 @@ services:
       retries: 5
       start_period: 20s
     deploy:
-      replicas: 1
-      update_config: {parallelism: 1, order: start-first, failure_action: rollback, delay: 10s}
-      restart_policy: {condition: on-failure, max_attempts: 3}
       resources:
-        limits: {cpus: '1.0', memory: 512M}
-        reservations: {cpus: '0.1', memory: 128M}
+        limits: {cpus: '1.0', memory: 320M}
     logging: *default-logging
     labels:
       - traefik.enable=true
       - traefik.docker.network=lumiris_prod
-      - traefik.http.routers.client.rule=Host(`client.${DOMAIN:-lumiris.eu}`)
-      - traefik.http.routers.client.entrypoints=websecure
-      - traefik.http.routers.client.tls.certresolver=letsencrypt
-      - traefik.http.routers.client.middlewares=security-headers@file,compress@file,cf-trust@file
-      - traefik.http.services.client.loadbalancer.server.port=3003
+      - traefik.http.routers.app.rule=Host(`app.${DOMAIN:-lumiris.eu}`)
+      - traefik.http.routers.app.entrypoints=websecure
+      - traefik.http.routers.app.tls.certresolver=letsencrypt
+      - traefik.http.routers.app.middlewares=security-headers@file,compress@file
+      - traefik.http.services.app.loadbalancer.server.port=3003
 
-  otel-collector:
-    image: otel/opentelemetry-collector-contrib:${OTEL_VERSION:-0.111.0}
-    container_name: lumiris-otel-collector
-    <<: *app-restart
-    command: ['--config=/etc/otel/config.yml']
-    volumes:
-      - ./monitoring-prod/otel-collector-config.yml:/etc/otel/config.yml:ro
+  lumiris-admin:
+    image: lumiris-admin:local
+    build:
+      context: ../../Lumiris-Front
+      dockerfile: apps/admin/Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE_URL: https://api.${DOMAIN:-lumiris.eu}
+        NEXT_PUBLIC_SENTRY_DSN: ${SENTRY_DSN_ADMIN:-}
+    container_name: lumiris-admin
+    <<: *restart
     networks: [lumiris_prod]
+    environment: {NODE_ENV: production, PORT: '3001'}
+    depends_on: [lumiris-api]
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://localhost:3001/']
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     deploy:
       resources:
-        limits: {cpus: '0.5', memory: 256M}
+        limits: {cpus: '1.0', memory: 320M}
     logging: *default-logging
-
-  node-exporter:
-    image: prom/node-exporter:${NODE_EXPORTER_VERSION:-v1.8.2}
-    container_name: lumiris-node-exporter
-    <<: *app-restart
-    command:
-      - '--path.procfs=/host/proc'
-      - '--path.sysfs=/host/sys'
-      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
-    volumes:
-      - /proc:/host/proc:ro
-      - /sys:/host/sys:ro
-      - /:/rootfs:ro
-    networks: [lumiris_prod]
-    deploy:
-      resources:
-        limits: {cpus: '0.2', memory: 128M}
-    logging: *default-logging
-
-  cadvisor:
-    image: gcr.io/cadvisor/cadvisor:${CADVISOR_VERSION:-v0.49.1}
-    container_name: lumiris-cadvisor
-    <<: *app-restart
-    privileged: true
-    devices:
-      - /dev/kmsg
-    volumes:
-      - /:/rootfs:ro
-      - /var/run:/var/run:ro
-      - /sys:/sys:ro
-      - /var/lib/docker:/var/lib/docker:ro
-      - /dev/disk:/dev/disk:ro
-    networks: [lumiris_prod]
-    deploy:
-      resources:
-        limits: {cpus: '0.3', memory: 256M}
-    logging: *default-logging
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=lumiris_prod
+      - traefik.http.routers.admin.rule=Host(`admin.${DOMAIN:-lumiris.eu}`)
+      - traefik.http.routers.admin.entrypoints=websecure
+      - traefik.http.routers.admin.tls.certresolver=letsencrypt
+      - traefik.http.routers.admin.middlewares=security-headers@file,compress@file
+      - traefik.http.services.admin.loadbalancer.server.port=3001
 
 networks:
   lumiris_prod:
@@ -259,3 +289,6 @@ networks:
 
 volumes:
   traefik-acme:
+  postgres_data:
+  redis_data:
+  minio_data:

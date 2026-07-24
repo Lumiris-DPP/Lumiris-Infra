@@ -1,0 +1,16 @@
+---
+# CrowdSec bouncer middleware (file provider). Mounted into /etc/traefik/dynamic
+# ONLY by the docker-compose.crowdsec.yml overlay, so the base stack never loads
+# it (the plugin is declared only in traefik.crowdsec.yml).
+# The LAPI key is read from a file (rendered at enable time from .env.prod) so no
+# secret is committed.
+http:
+  middlewares:
+    crowdsec:
+      plugin:
+        crowdsec:
+          enabled: true
+          crowdsecMode: stream
+          crowdsecLapiScheme: http
+          crowdsecLapiHost: crowdsec:8080
+          crowdsecLapiKeyFile: /etc/traefik/crowdsec/lapi-key

@@ -3,13 +3,24 @@ procs:
     cwd: local
     shell: docker compose up
 
+  # Spring Boot API (port 8080). Sources .env (dont FLYWAY_LOCATIONS=…,classpath:db/seed)
+  # → Flyway applique le schéma + le seed de démo au démarrage : la DB est peuplée.
   backend:
     cwd: ../Lumiris-Backend
     shell: "if [ -f .env ]; then set -a; . ./.env; set +a; fi; exec ./mvnw spring-boot:run"
 
+  # Fronts WEB uniquement : site (3000) · admin (3001) · client (3003).
+  # Le mobile est exclu ici — il tourne en desktop natif dans le proc `mobile` ci-dessous.
   front:
     cwd: ../Lumiris-Front
-    shell: bun dev
+    shell: "bunx turbo run dev --parallel --filter='!@lumiris/mobile'"
+
+  # Mobile = app DESKTOP Tauri (fenêtre native). Tauri lance Vite en interne sur :1420
+  # (beforeDevCommand). `env -u LD_LIBRARY_PATH …` évite le conflit de lib snap au lancement
+  # de la fenêtre GTK/WebKit depuis un shell snap (inoffensif sinon).
+  mobile:
+    cwd: ../Lumiris-Front/apps/mobile
+    shell: "env -u LD_LIBRARY_PATH -u GTK_PATH -u GIO_MODULE_DIR bunx @tauri-apps/cli@latest dev"
 
   stripe:
     cwd: ../Lumiris-Backend

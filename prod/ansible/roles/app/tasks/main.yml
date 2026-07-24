@@ -15,10 +15,11 @@
       - "--exclude=.turbo"
       - "--exclude=target"
       - "--exclude=dist"
-      - "--exclude=out"
       - "--exclude=*.log"
       - "--exclude=.env"
       - "--exclude=.env.prod"
+      # Runtime-rendered CrowdSec LAPI key (overlay) — don't let --delete wipe it.
+      - "--exclude=crowdsec/lapi-key"
   loop:
     - Lumiris-Front
     - Lumiris-Backend
@@ -26,7 +27,9 @@
 
 - name: Render runtime env from the SOPS-encrypted secrets file
   ansible.builtin.copy:
-    content: "{{ lookup('community.sops.sops', app_sops_env_file) }}"
+    # The encrypted file is dotenv-formatted; its `.sops` extension isn't
+    # auto-detected, so tell SOPS the type explicitly (else it tries JSON).
+    content: "{{ lookup('community.sops.sops', app_sops_env_file, input_type='dotenv', output_type='dotenv') }}"
     dest: "{{ app_env_file }}"
     mode: "0600"
   no_log: true

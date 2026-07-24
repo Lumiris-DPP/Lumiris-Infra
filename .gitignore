@@ -36,6 +36,9 @@ prod/ansible/inventories/prod/hosts.yml
 *.decrypted
 *.dec
 
+# CrowdSec bouncer LAPI key — rendered at overlay-enable time from .env.prod
+prod/crowdsec/lapi-key
+
 # OS / editor
 .DS_Store
 Thumbs.db

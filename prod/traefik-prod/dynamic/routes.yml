@@ -1,16 +1,64 @@
 ---
+# Static routing via the file provider. The docker label provider is disabled
+# (Traefik's docker client defaults to API 1.24, which the Docker 29 daemon
+# rejects — min 1.40 — so label discovery never worked). Traefik reaches each
+# container by name on the shared lumiris_prod network.
+#
+# The `websecure` entrypoint (traefik.yml) already applies security-headers +
+# compress and defaults tls.certResolver=letsencrypt, so each router below only
+# needs its Host rule + a tls block to trigger the ACME cert for that domain.
 http:
   routers:
-    # Catch-all so unknown Hosts get 404 instead of falling through to a default backend.
-    default-catchall:
-      rule: "HostRegexp(`{any:.+}`)"
+    site:
+      rule: "Host(`lumiris.eu`) || Host(`www.lumiris.eu`)"
       entryPoints: [websecure]
-      priority: 1
-      service: noop
+      service: site
+      tls:
+        certResolver: letsencrypt
+
+    app:
+      rule: "Host(`app.lumiris.eu`)"
+      entryPoints: [websecure]
+      service: app
+      tls:
+        certResolver: letsencrypt
+
+    admin:
+      rule: "Host(`admin.lumiris.eu`)"
+      entryPoints: [websecure]
+      service: admin
+      tls:
+        certResolver: letsencrypt
+
+    api:
+      rule: "Host(`api.lumiris.eu`)"
+      entryPoints: [websecure]
+      service: api
+      middlewares: [rate-limit-api]
       tls:
         certResolver: letsencrypt
 
   services:
-    noop:
+    site:
       loadBalancer:
-        servers: []
+        servers:
+          - url: "http://lumiris-site:3000"
+
+    app:
+      loadBalancer:
+        servers:
+          - url: "http://lumiris-app:3003"
+
+    admin:
+      loadBalancer:
+        servers:
+          - url: "http://lumiris-admin:3001"
+
+    api:
+      loadBalancer:
+        servers:
+          - url: "http://lumiris-api:8080"
+        healthCheck:
+          path: /actuator/health/readiness
+          interval: "15s"
+          timeout: "5s"

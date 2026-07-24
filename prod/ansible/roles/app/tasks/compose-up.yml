@@ -1,8 +1,12 @@
 ---
-- name: Build images (NEXT_PUBLIC_API_BASE_URL baked via compose build args)
+- name: Build images ONE service at a time (NEXT_PUBLIC_API_BASE_URL baked via build args)
+  # Serialise explicitly: 3 concurrent Next builds OOM the 3.8 GB box, and
+  # COMPOSE_PARALLEL_LIMIT does not gate buildkit/bake. One build per loop keeps
+  # peak RSS to a single Next build (~1.5 GB).
   ansible.builtin.command:
-    cmd: docker compose --env-file {{ app_env_file }} -f {{ app_compose_file }} build
+    cmd: docker compose --env-file {{ app_env_file }} -f {{ app_compose_file }} build {{ item }}
     chdir: "{{ app_compose_dir }}"
+  loop: "{{ app_services }}"
   register: build_result
   changed_when: true
 

@@ -22,7 +22,7 @@ S3C_PORT="$(env_port MINIO_CONSOLE_PORT 9001)"
 APP_PORTS=(
   "3000|front site"
   "3001|front admin"
-  "3002|front mobile"
+  "1420|mobile vite (tauri desktop)"
   "3003|front client"
   "8080|backend api"
 )

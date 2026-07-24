@@ -26,11 +26,9 @@ entryPoints:
     address: ":8082"
 
 providers:
-  docker:
-    endpoint: "unix:///var/run/docker.sock"
-    exposedByDefault: false
-    network: lumiris_prod
-    watch: true
+  # Docker label provider intentionally disabled: Traefik's docker client defaults
+  # to API 1.24, which the Docker 29 daemon rejects (min 1.40). Routing is defined
+  # statically in dynamic/routes.yml (file provider) instead.
   file:
     directory: /etc/traefik/dynamic
     watch: true

@@ -1,16 +1,8 @@
-# Lumiris — production stack (self-hosted, single server).
-# Datastores (postgres/redis/minio) run ON the box; images are built locally
-# from the sibling repos. Bring up with:
-#   docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
-#
-# WAF (CrowdSec) lives in the separate overlay docker-compose.crowdsec.yml and is
-# enabled deliberately AFTER the base stack is confirmed healthy.
-
 x-logging: &default-logging
   driver: json-file
   options:
-    max-size: '20m'
-    max-file: '5'
+    max-size: "20m"
+    max-file: "5"
 
 x-restart: &restart
   restart: unless-stopped
@@ -22,23 +14,24 @@ services:
     container_name: lumiris-traefik
     <<: *restart
     ports:
-      - '80:80'
-      - '443:443'
-      - '127.0.0.1:8082:8082' # ping/health, localhost only
+      - "80:80"
+      - "443:443"
+      - "127.0.0.1:8082:8082" # ping/health, localhost only
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # No docker.sock: routing is static (file provider), so traefik does not
+      # need the daemon socket — smaller attack surface.
       - ./traefik-prod/traefik.yml:/etc/traefik/traefik.yml:ro
       - ./traefik-prod/dynamic:/etc/traefik/dynamic:ro
       - traefik-acme:/letsencrypt
     networks: [lumiris_prod]
     healthcheck:
-      test: ['CMD', 'wget', '-qO-', 'http://localhost:8082/ping']
+      test: ["CMD", "wget", "-qO-", "http://localhost:8082/ping"]
       interval: 10s
       timeout: 3s
       retries: 5
     deploy:
       resources:
-        limits: {cpus: '0.5', memory: 200M}
+        limits: { cpus: "0.5", memory: 200M }
     logging: *default-logging
 
   # ── Datastores ──────────────────────────────────────────────────────────────
@@ -54,39 +47,40 @@ services:
       - postgres_data:/var/lib/postgresql/data
     networks: [lumiris_prod] # no host port — internal only
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB:-lumiris}']
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB:-lumiris}"]
       interval: 5s
       timeout: 5s
       retries: 10
     deploy:
       resources:
-        limits: {cpus: '1.0', memory: 400M}
+        limits: { cpus: "1.0", memory: 400M }
     logging: *default-logging
 
   redis:
     image: redis:${REDIS_VERSION:-7.4-alpine}
     container_name: lumiris-redis
     <<: *restart
-    command: ['redis-server', '/usr/local/etc/redis/redis.conf', '--requirepass', '${REDIS_PASSWORD}']
+    command:
+      ["redis-server", "/usr/local/etc/redis/redis.conf", "--requirepass", "${REDIS_PASSWORD}"]
     volumes:
       - ./redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
       - redis_data:/data
     networks: [lumiris_prod] # internal only
     healthcheck:
-      test: ['CMD', 'redis-cli', '-a', '${REDIS_PASSWORD}', 'ping']
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
       interval: 5s
       timeout: 3s
       retries: 10
     deploy:
       resources:
-        limits: {cpus: '0.5', memory: 96M}
+        limits: { cpus: "0.5", memory: 96M }
     logging: *default-logging
 
   minio:
     image: minio/minio:${MINIO_VERSION:-RELEASE.2024-11-07T00-52-20Z}
     container_name: lumiris-minio
     <<: *restart
-    command: ['server', '/data', '--console-address', ':9001']
+    command: ["server", "/data", "--console-address", ":9001"]
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
@@ -94,13 +88,13 @@ services:
       - minio_data:/data
     networks: [lumiris_prod] # internal only (no public console/API)
     healthcheck:
-      test: ['CMD', 'mc', 'ready', 'local']
+      test: ["CMD", "mc", "ready", "local"]
       interval: 10s
       timeout: 5s
       retries: 5
     deploy:
       resources:
-        limits: {cpus: '0.5', memory: 300M}
+        limits: { cpus: "0.5", memory: 300M }
     logging: *default-logging
 
   # ── Backend API ─────────────────────────────────────────────────────────────
@@ -113,14 +107,15 @@ services:
     <<: *restart
     networks: [lumiris_prod]
     depends_on:
-      postgres: {condition: service_healthy}
-      redis: {condition: service_healthy}
-      minio: {condition: service_healthy}
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      minio: { condition: service_healthy }
     environment:
       SPRING_PROFILES_ACTIVE: prod
-      SERVER_PORT: '8080'
+      SERVER_PORT: "8080"
+      MANAGEMENT_HEALTH_MAIL_ENABLED: "false"
       # Cap the JVM so it can't starve postgres/minio/fronts on a 3.8 GB box.
-      JAVA_TOOL_OPTIONS: '-XX:MaxRAMPercentage=65 -XX:InitialRAMPercentage=30 -XX:+UseG1GC'
+      JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=65 -XX:InitialRAMPercentage=30 -XX:+UseG1GC"
       # Datastore
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-lumiris}
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
@@ -128,7 +123,7 @@ services:
       FLYWAY_LOCATIONS: ${FLYWAY_LOCATIONS:-classpath:db/migration}
       # Redis (cache)
       REDIS_HOST: redis
-      REDIS_PORT: '6379'
+      REDIS_PORT: "6379"
       REDIS_PASSWORD: ${REDIS_PASSWORD}
       # Sentry (backend error monitoring)
       SENTRY_DSN: ${SENTRY_DSN_API:-}
@@ -164,15 +159,15 @@ services:
       BLOCKCHAIN_WALLET_PRIVATE_KEY: ${BLOCKCHAIN_WALLET_PRIVATE_KEY}
       GEOCODING_USER_AGENT: ${GEOCODING_USER_AGENT:-lumiris-prod}
     healthcheck:
-      test: ['CMD', 'wget', '-qO-', 'http://localhost:8080/actuator/health/readiness']
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/actuator/health/readiness"]
       interval: 15s
       timeout: 5s
       retries: 10
       start_period: 60s
     deploy:
       resources:
-        limits: {cpus: '1.5', memory: 1024M}
-        reservations: {cpus: '0.25', memory: 256M}
+        limits: { cpus: "1.5", memory: 1024M }
+        reservations: { cpus: "0.25", memory: 256M }
     logging: *default-logging
     labels:
       - traefik.enable=true
@@ -196,17 +191,23 @@ services:
     container_name: lumiris-site
     <<: *restart
     networks: [lumiris_prod]
-    environment: {NODE_ENV: production, PORT: '3000'}
+    environment: { NODE_ENV: production, PORT: "3000" }
     depends_on: [lumiris-api]
     healthcheck:
-      test: ['CMD', 'wget', '-qO-', 'http://localhost:3000/']
+      test:
+        [
+          "CMD",
+          "/nodejs/bin/node",
+          "-e",
+          "fetch('http://localhost:3000/').then(()=>process.exit(0)).catch(()=>process.exit(1))",
+        ]
       interval: 15s
       timeout: 5s
       retries: 5
       start_period: 20s
     deploy:
       resources:
-        limits: {cpus: '1.0', memory: 320M}
+        limits: { cpus: "1.0", memory: 320M }
     logging: *default-logging
     labels:
       - traefik.enable=true
@@ -229,17 +230,23 @@ services:
     container_name: lumiris-app
     <<: *restart
     networks: [lumiris_prod]
-    environment: {NODE_ENV: production, PORT: '3003'}
+    environment: { NODE_ENV: production, PORT: "3003" }
     depends_on: [lumiris-api]
     healthcheck:
-      test: ['CMD', 'wget', '-qO-', 'http://localhost:3003/']
+      test:
+        [
+          "CMD",
+          "/nodejs/bin/node",
+          "-e",
+          "fetch('http://localhost:3003/').then(()=>process.exit(0)).catch(()=>process.exit(1))",
+        ]
       interval: 15s
       timeout: 5s
       retries: 5
       start_period: 20s
     deploy:
       resources:
-        limits: {cpus: '1.0', memory: 320M}
+        limits: { cpus: "1.0", memory: 320M }
     logging: *default-logging
     labels:
       - traefik.enable=true
@@ -261,17 +268,23 @@ services:
     container_name: lumiris-admin
     <<: *restart
     networks: [lumiris_prod]
-    environment: {NODE_ENV: production, PORT: '3001'}
+    environment: { NODE_ENV: production, PORT: "3001" }
     depends_on: [lumiris-api]
     healthcheck:
-      test: ['CMD', 'wget', '-qO-', 'http://localhost:3001/']
+      test:
+        [
+          "CMD",
+          "/nodejs/bin/node",
+          "-e",
+          "fetch('http://localhost:3001/').then(()=>process.exit(0)).catch(()=>process.exit(1))",
+        ]
       interval: 15s
       timeout: 5s
       retries: 5
       start_period: 20s
     deploy:
       resources:
-        limits: {cpus: '1.0', memory: 320M}
+        limits: { cpus: "1.0", memory: 320M }
     logging: *default-logging
     labels:
       - traefik.enable=true

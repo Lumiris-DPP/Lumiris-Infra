@@ -1,12 +1,19 @@
-# WAF overlay — CrowdSec IPS + Traefik bouncer plugin.
-# STAGED on purpose: enable only after the base stack is confirmed healthy, so a
-# WAF misconfiguration can never brick the first deploy.
+# WAF overlay — CrowdSec IPS + Traefik bouncer plugin (file-provider variant).
+# STAGED on purpose: enable only after the base stack is confirmed healthy.
+#
+# Adapted to the file-provider routing (the docker label provider is disabled —
+# Docker 29 rejects Traefik's API 1.24). The bouncer middleware is defined in
+# traefik-prod/dynamic-crowdsec/crowdsec.yml and applied via crowdsec@file on the
+# websecure entrypoint (traefik.crowdsec.yml). CrowdSec reads Traefik's access
+# logs over the docker socket (DOCKER_API_VERSION pinned so its docker client
+# works on Docker 29).
 #
 # Enable:
+#   grep '^CROWDSEC_BOUNCER_KEY=' .env.prod | cut -d= -f2- > crowdsec/lapi-key
 #   docker compose --env-file .env.prod \
 #     -f docker-compose.prod.yml -f docker-compose.crowdsec.yml up -d
 #
-# Needs CROWDSEC_BOUNCER_KEY in .env.prod (shared secret; `openssl rand -hex 32`).
+# NOTE: not runtime-verified yet.
 
 services:
   crowdsec:
@@ -17,11 +24,19 @@ services:
       COLLECTIONS: "crowdsecurity/traefik crowdsecurity/http-cve crowdsecurity/base-http-scenarios"
       # Pre-registers a bouncer named "traefik" with this key (matches the plugin).
       BOUNCER_KEY_traefik: ${CROWDSEC_BOUNCER_KEY}
+      # Docker 29's daemon min API is 1.40; CrowdSec's docker client honours this.
+      DOCKER_API_VERSION: "1.44"
     volumes:
       - ./crowdsec/acquis.yaml:/etc/crowdsec/acquis.yaml:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - crowdsec_data:/var/lib/crowdsec/data
     networks: [lumiris_prod]
+    healthcheck:
+      test: ["CMD", "cscli", "lapi", "status"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     deploy:
       resources:
         limits: {cpus: '0.5', memory: 200M}
@@ -29,23 +44,19 @@ services:
       driver: json-file
       options: {max-size: '10m', max-file: '3'}
 
-  # Override Traefik: swap to the plugin-enabled static config + define the
-  # `crowdsec` bouncer middleware (labels interpolate the key from .env.prod).
+  # Swap Traefik to the plugin-enabled static config + mount the crowdsec@file
+  # middleware and the LAPI key. `!override` replaces the base volume list (avoids
+  # duplicate mount targets from list concatenation).
   traefik:
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+    volumes: !override
       - ./traefik-prod/traefik.crowdsec.yml:/etc/traefik/traefik.yml:ro
       - ./traefik-prod/dynamic:/etc/traefik/dynamic:ro
+      - ./traefik-prod/dynamic-crowdsec/crowdsec.yml:/etc/traefik/dynamic/crowdsec.yml:ro
+      - ./crowdsec/lapi-key:/etc/traefik/crowdsec/lapi-key:ro
       - traefik-acme:/letsencrypt
-    labels:
-      - traefik.enable=true
-      - traefik.http.middlewares.crowdsec.plugin.crowdsec.enabled=true
-      - traefik.http.middlewares.crowdsec.plugin.crowdsec.crowdsecMode=stream
-      - traefik.http.middlewares.crowdsec.plugin.crowdsec.crowdsecLapiScheme=http
-      - traefik.http.middlewares.crowdsec.plugin.crowdsec.crowdsecLapiHost=crowdsec:8080
-      - traefik.http.middlewares.crowdsec.plugin.crowdsec.crowdsecLapiKey=${CROWDSEC_BOUNCER_KEY}
     depends_on:
-      - crowdsec
+      crowdsec:
+        condition: service_healthy
 
 volumes:
   crowdsec_data:

@@ -1,9 +1,12 @@
 ---
-# Traefik static config WITH the CrowdSec bouncer plugin enabled.
-# Used only by the docker-compose.crowdsec.yml overlay (mounted over traefik.yml).
-# Identical to traefik.yml except: the experimental plugin declaration and the
-# `crowdsec@docker` middleware added to the websecure entrypoint (applies to ALL
-# routers at once — no per-service label changes needed).
+# Traefik static config WITH the CrowdSec bouncer plugin — used ONLY by the
+# docker-compose.crowdsec.yml overlay (mounted over traefik.yml).
+# Same as traefik.yml (file-provider routing; the docker provider is disabled
+# because Docker 29 rejects Traefik's API 1.24) PLUS:
+#   - the experimental crowdsec plugin declaration
+#   - `crowdsec@file` added to the websecure entrypoint (applies to all routers).
+# The `crowdsec` middleware itself is defined in dynamic/crowdsec.yml, mounted by
+# the overlay.
 
 global:
   checkNewVersion: false
@@ -32,17 +35,12 @@ entryPoints:
       middlewares:
         - security-headers@file
         - compress@file
-        - crowdsec@docker
+        - crowdsec@file
     http3: {}
   ping:
     address: ":8082"
 
 providers:
-  docker:
-    endpoint: "unix:///var/run/docker.sock"
-    exposedByDefault: false
-    network: lumiris_prod
-    watch: true
   file:
     directory: /etc/traefik/dynamic
     watch: true

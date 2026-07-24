@@ -1,8 +1,20 @@
 ---
-# Replace placeholder age keys with real ops recipients; generate via `age-keygen -o ~/.config/sops/age/keys.txt`.
+# age recipients (ops + backup). Public keys of the identities in the operator's
+# key file (~/.config/sops/age/keys.txt). Regenerate with `age-keygen`.
+_age: &age >-
+  age1lmmfazm67kfrv5ggfygvxcgtaa6hg66luhqx4ya6uk7utvqvh4zssrfz3d,
+  age1at0dwk9a8lgzpxhuwxrpj80a9nx34nunls5a6m8kcrl2tyryl90qymxd8z
+
 creation_rules:
+  # Production dotenv secrets (prod/.env.prod → prod/secrets/prod.env.sops).
+  # Encrypt EVERY value (no encrypted_regex): the file is a flat KEY=VALUE env
+  # where the sensitive keys don't match the legacy word list below.
+  # Encrypt:  sops -e --input-type dotenv --output-type dotenv .env.prod > secrets/prod.env.sops
+  # Decrypt:  sops -d --input-type dotenv --output-type dotenv secrets/prod.env.sops
+  - path_regex: (^|/)\.env\.prod$
+    age: *age
+
+  # Legacy per-key YAML/JSON/env secrets (local-dev tooling).
   - path_regex: secrets/.*\.(ya?ml|env|json)$
     encrypted_regex: '^(password|secret|key|token|dsn|url)$'
-    age: >-
-      age1placeholderopskey0000000000000000000000000000000000000000aaaa,
-      age1placeholderbackup00000000000000000000000000000000000000000bbbb
+    age: *age

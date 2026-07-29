@@ -30,6 +30,12 @@ http:
           - "*"
         accessControlMaxAge: 3600
 
+    mobile-legacy-passport:
+      redirectRegex:
+        regex: "^(https?://[^/]+)/p/([A-Za-z0-9_-]+)/?(?:\\?(.*))?$"
+        replacement: "${1}/p/?c=${2}&${3}"
+        permanent: false
+
     strip-api-prefix:
       stripPrefix:
         prefixes:

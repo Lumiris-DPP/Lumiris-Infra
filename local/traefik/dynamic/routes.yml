@@ -30,6 +30,15 @@ http:
         - compress@file
         - security-headers@file
 
+    mobile-legacy-passport:
+      rule: "Host(`mobile.lumiris.local`) && PathRegexp(`^/p/[A-Za-z0-9_-]+/?$`)"
+      priority: 100
+      entryPoints: [websecure]
+      service: mobile
+      tls: {}
+      middlewares:
+        - mobile-legacy-passport@file
+
     mobile:
       rule: "Host(`mobile.lumiris.local`)"
       entryPoints: [websecure]

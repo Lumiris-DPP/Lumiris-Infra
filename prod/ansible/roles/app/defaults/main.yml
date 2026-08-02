@@ -8,3 +8,12 @@ app_services:
   - lumiris-app
   - lumiris-admin
 app_force_recreate: false
+
+# Registry coordinates. api_image_tag / front_image_tag deliberately carry no
+# default: a deploy must always name the exact versions it ships.
+app_registry: ghcr.io
+app_image_namespace: lumiris-dpp
+app_images_env_file: "{{ app_compose_dir }}/.env.images"
+
+app_health_retries: 40
+app_health_delay: 5

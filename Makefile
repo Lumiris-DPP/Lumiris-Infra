@@ -162,46 +162,37 @@ bench: ## k6 local (SCENARIO=browse|audit|scoring)
 
 ##@ Phase 2 — Préparation prod (refuse si non configuré)
 PROD_DIR       := $(ROOT)/prod
-TF_DIR         := $(PROD_DIR)/terraform
-TF_TFVARS      := $(TF_DIR)/envs/prod/terraform.tfvars
 ANSIBLE_DIR    := $(PROD_DIR)/ansible
 ANSIBLE_INV    := $(ANSIBLE_DIR)/inventories/prod/hosts.yml
-SOPS_BOOTSTRAP := $(ROOT)/secrets/prod.env.sops.yaml
 
-.PHONY: prod-check prod-plan prod-bootstrap prod-deploy prod-backup prod-seed prod-rotate-secrets
-prod-check: ## terraform fmt + validate, ansible-lint, yamllint, shellcheck — vérifie le scaffolding
-	@command -v terraform >/dev/null || { echo "[prod-check] terraform absent"; exit 1; }
+.PHONY: prod-check prod-bootstrap prod-deploy prod-backup prod-seed prod-rotate-secrets
+prod-check: ## Même gate que la CI : yamllint, shellcheck, prettier, ansible-lint, compose config
 	@command -v ansible-lint >/dev/null || { echo "[prod-check] ansible-lint absent"; exit 1; }
 	@command -v yamllint >/dev/null || { echo "[prod-check] yamllint absent"; exit 1; }
 	@command -v shellcheck >/dev/null || { echo "[prod-check] shellcheck absent"; exit 1; }
-	@echo "[prod-check] terraform fmt -check -recursive"
-	@terraform -chdir=$(TF_DIR) fmt -check -recursive
-	@echo "[prod-check] terraform init -backend=false"
-	@terraform -chdir=$(TF_DIR) init -backend=false -input=false -no-color >/dev/null
-	@echo "[prod-check] terraform validate"
-	@terraform -chdir=$(TF_DIR) validate -no-color
-	@echo "[prod-check] ansible-lint"
-	@cd $(ANSIBLE_DIR) && ansible-lint
-	@echo "[prod-check] yamllint prod/"
-	@yamllint -c $(ROOT)/.yamllint.yml $(PROD_DIR)
+	@echo "[prod-check] yamllint"
+	@yamllint -c $(ROOT)/.yamllint.yml $(ROOT)
 	@echo "[prod-check] shellcheck seed/ + scripts/ (severity=warning)"
 	@shellcheck -S warning $(SCRIPTS_DIR)/*.sh $(ROOT)/seed/apply-seed.sh
-	@echo "[prod-check] OK — scaffolding valid"
+	@echo "[prod-check] prettier --check"
+	@npx --yes prettier@3 --check '**/*.{md,yml,yaml,json}' --ignore-path $(ROOT)/.prettierignore
+	@echo "[prod-check] ansible-lint"
+	@cd $(ANSIBLE_DIR) && ansible-lint
+	@echo "[prod-check] docker compose config"
+	@cd $(PROD_DIR) && API_IMAGE_TAG=v0.0.0 FRONT_IMAGE_TAG=v0.0.0 \
+		docker compose -f docker-compose.prod.yml --env-file .env.prod.example config >/dev/null
+	@cd $(ROOT)/local && docker compose -f docker-compose.yml --env-file .env.example config >/dev/null
+	@echo "[prod-check] OK"
 
-prod-plan: ## terraform plan prod (refuse si secrets/prod.env.sops.yaml absent ou tfvars manquant)
-	@test -f $(SOPS_BOOTSTRAP) || { echo "[prod-plan] $(SOPS_BOOTSTRAP) absent — voir docs/MIGRATION-TO-PROD.md étape 3"; exit 1; }
-	@test -f $(TF_TFVARS) || { echo "[prod-plan] $(TF_TFVARS) absent — copier .example puis remplir"; exit 1; }
-	@command -v terraform >/dev/null || { echo "[prod-plan] terraform absent"; exit 1; }
-	@cd $(TF_DIR) && terraform init -input=false
-	@cd $(TF_DIR) && terraform plan -var-file=envs/prod/terraform.tfvars -input=false
-
-prod-bootstrap: ## scripts/prod-bootstrap.sh — orchestre full deploy initial (refuse si VPS non configuré)
+prod-bootstrap: ## scripts/prod-bootstrap.sh — durcissement + docker + premier déploiement
 	@$(SCRIPTS_DIR)/prod-bootstrap.sh
 
-prod-deploy: ## ansible-playbook deploy.yml. Usage: make prod-deploy TAG=v0.4.2
+prod-deploy: ## Déploie des images déjà publiées. Usage: make prod-deploy API_TAG=v0.4.2 FRONT_TAG=v0.4.2
 	@test -f $(ANSIBLE_INV) || { echo "[prod-deploy] $(ANSIBLE_INV) absent"; exit 1; }
-	@test -n "$(TAG)" || { echo "[prod-deploy] usage: make prod-deploy TAG=v0.4.2"; exit 2; }
-	@cd $(ANSIBLE_DIR) && ansible-playbook playbooks/deploy.yml -e image_tag=$(TAG)
+	@test -n "$(API_TAG)" || { echo "[prod-deploy] usage: make prod-deploy API_TAG=v0.4.2 FRONT_TAG=v0.4.2"; exit 2; }
+	@test -n "$(FRONT_TAG)" || { echo "[prod-deploy] usage: make prod-deploy API_TAG=v0.4.2 FRONT_TAG=v0.4.2"; exit 2; }
+	@cd $(ANSIBLE_DIR) && ansible-playbook playbooks/deploy.yml \
+		-e api_image_tag=$(API_TAG) -e front_image_tag=$(FRONT_TAG)
 
 prod-backup: ## ansible-playbook backup.yml
 	@test -f $(ANSIBLE_INV) || { echo "[prod-backup] inventory absent — voir docs/MIGRATION-TO-PROD.md"; exit 1; }

@@ -1,5 +1,8 @@
 ---
 # Full converge = server setup + app deploy, composed from the two focused
 # playbooks (single source of truth per stage). Run: ansible-playbook playbooks/site.yml
-- import_playbook: bootstrap.yml
-- import_playbook: deploy.yml
+- name: Lumiris prod — server bootstrap
+  ansible.builtin.import_playbook: bootstrap.yml
+
+- name: Lumiris prod — application deploy
+  ansible.builtin.import_playbook: deploy.yml

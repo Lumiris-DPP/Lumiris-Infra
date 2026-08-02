@@ -1,78 +1,78 @@
 groups:
-    - name: lumiris.api.recording
-      interval: 30s
-      rules:
-          - record: lumiris:api_request_rate_5m
-            expr: sum(rate(lumiris_http_requests_total[5m]))
+  - name: lumiris.api.recording
+    interval: 30s
+    rules:
+      - record: lumiris:api_request_rate_5m
+        expr: sum(rate(lumiris_http_requests_total[5m]))
 
-          - record: lumiris:api_error_rate_5m
-            expr: sum(rate(lumiris_http_errors_total[5m]))
+      - record: lumiris:api_error_rate_5m
+        expr: sum(rate(lumiris_http_errors_total[5m]))
 
-          - record: lumiris:api_availability_30d
-            expr: |
-                1 - (
-                  sum(rate(lumiris_http_errors_total[30d]))
-                  /
-                  clamp_min(sum(rate(lumiris_http_requests_total[30d])), 1)
-                )
+      - record: lumiris:api_availability_30d
+        expr: |
+          1 - (
+            sum(rate(lumiris_http_errors_total[30d]))
+            /
+            clamp_min(sum(rate(lumiris_http_requests_total[30d])), 1)
+          )
 
-          - record: lumiris:score_latency_p50_5m
-            expr: |
-                histogram_quantile(
-                  0.50,
-                  sum by (le) (rate(lumiris_audit_latency_seconds_bucket{route="/api/dpp/:id/score"}[5m]))
-                )
+      - record: lumiris:score_latency_p50_5m
+        expr: |
+          histogram_quantile(
+            0.50,
+            sum by (le) (rate(lumiris_audit_latency_seconds_bucket{route="/api/dpp/:id/score"}[5m]))
+          )
 
-          - record: lumiris:score_latency_p95_5m
-            expr: |
-                histogram_quantile(
-                  0.95,
-                  sum by (le) (rate(lumiris_audit_latency_seconds_bucket{route="/api/dpp/:id/score"}[5m]))
-                )
+      - record: lumiris:score_latency_p95_5m
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le) (rate(lumiris_audit_latency_seconds_bucket{route="/api/dpp/:id/score"}[5m]))
+          )
 
-          - record: lumiris:score_latency_p99_5m
-            expr: |
-                histogram_quantile(
-                  0.99,
-                  sum by (le) (rate(lumiris_audit_latency_seconds_bucket{route="/api/dpp/:id/score"}[5m]))
-                )
+      - record: lumiris:score_latency_p99_5m
+        expr: |
+          histogram_quantile(
+            0.99,
+            sum by (le) (rate(lumiris_audit_latency_seconds_bucket{route="/api/dpp/:id/score"}[5m]))
+          )
 
-    - name: lumiris.api.slo
-      rules:
-          - alert: LumirisApiAvailabilitySloFastBurn
-            expr: |
-                (
-                  sum(rate(lumiris_http_errors_total[1h]))
-                  /
-                  clamp_min(sum(rate(lumiris_http_requests_total[1h])), 1)
-                ) > (14.4 * 0.001)
-            for: 2m
-            labels:
-                severity: page
-                slo: availability-99.9
-            annotations:
-                summary: 'API availability burning fast (>14.4× budget over 1h)'
-                runbook: 'Check /metrics on lumiris-api and recent deploys.'
+  - name: lumiris.api.slo
+    rules:
+      - alert: LumirisApiAvailabilitySloFastBurn
+        expr: |
+          (
+            sum(rate(lumiris_http_errors_total[1h]))
+            /
+            clamp_min(sum(rate(lumiris_http_requests_total[1h])), 1)
+          ) > (14.4 * 0.001)
+        for: 2m
+        labels:
+          severity: page
+          slo: availability-99.9
+        annotations:
+          summary: "API availability burning fast (>14.4× budget over 1h)"
+          runbook: "Check /metrics on lumiris-api and recent deploys."
 
-          - alert: LumirisApiAvailabilitySloSlowBurn
-            expr: |
-                (
-                  sum(rate(lumiris_http_errors_total[6h]))
-                  /
-                  clamp_min(sum(rate(lumiris_http_requests_total[6h])), 1)
-                ) > (6 * 0.001)
-            for: 15m
-            labels:
-                severity: warn
-                slo: availability-99.9
-            annotations:
-                summary: 'API availability burning slow (>6× budget over 6h)'
+      - alert: LumirisApiAvailabilitySloSlowBurn
+        expr: |
+          (
+            sum(rate(lumiris_http_errors_total[6h]))
+            /
+            clamp_min(sum(rate(lumiris_http_requests_total[6h])), 1)
+          ) > (6 * 0.001)
+        for: 15m
+        labels:
+          severity: warn
+          slo: availability-99.9
+        annotations:
+          summary: "API availability burning slow (>6× budget over 6h)"
 
-          - alert: LumirisScoreLatencyP95Slo
-            expr: lumiris:score_latency_p95_5m > 0.250
-            for: 10m
-            labels:
-                severity: page
-                slo: score-latency-p95-250ms
-            annotations:
-                summary: 'p95 of /api/dpp/:id/score above 250ms for 10m'
+      - alert: LumirisScoreLatencyP95Slo
+        expr: lumiris:score_latency_p95_5m > 0.250
+        for: 10m
+        labels:
+          severity: page
+          slo: score-latency-p95-250ms
+        annotations:
+          summary: "p95 of /api/dpp/:id/score above 250ms for 10m"

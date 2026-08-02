@@ -16,5 +16,5 @@ creation_rules:
 
   # Legacy per-key YAML/JSON/env secrets (local-dev tooling).
   - path_regex: secrets/.*\.(ya?ml|env|json)$
-    encrypted_regex: '^(password|secret|key|token|dsn|url)$'
+    encrypted_regex: "^(password|secret|key|token|dsn|url)$"
     age: *age

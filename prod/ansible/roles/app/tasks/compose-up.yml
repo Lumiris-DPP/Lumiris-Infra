@@ -1,36 +1,50 @@
 ---
-- name: Build images ONE service at a time (NEXT_PUBLIC_API_BASE_URL baked via build args)
-  # Serialise explicitly: 3 concurrent Next builds OOM the 3.8 GB box, and
-  # COMPOSE_PARALLEL_LIMIT does not gate buildkit/bake. One build per loop keeps
-  # peak RSS to a single Next build (~1.5 GB).
+- name: Pull the pinned images
   ansible.builtin.command:
-    cmd: docker compose --env-file {{ app_env_file }} -f {{ app_compose_file }} build {{ item }}
+    cmd: >-
+      docker compose --env-file {{ app_env_file }} --env-file {{ app_images_env_file }}
+      -f {{ app_compose_file }} pull
     chdir: "{{ app_compose_dir }}"
-  loop: "{{ app_services }}"
-  register: build_result
-  changed_when: true
+  register: pull_result
+  changed_when: "'Pulled' in pull_result.stderr"
 
 - name: Start the stack
   ansible.builtin.command:
     cmd: >-
-      docker compose --env-file {{ app_env_file }} -f {{ app_compose_file }}
+      docker compose --env-file {{ app_env_file }} --env-file {{ app_images_env_file }}
+      -f {{ app_compose_file }}
       up -d {{ '--force-recreate' if app_force_recreate | default(false) else '' }} --remove-orphans
     chdir: "{{ app_compose_dir }}"
   register: up_result
   changed_when: >-
     'Started' in up_result.stderr or 'Created' in up_result.stderr or 'Recreated' in up_result.stderr
 
-- name: Give containers time to become healthy
-  ansible.builtin.pause:
-    seconds: 30
-
-- name: Collect container status
+- name: Wait for every application container to report healthy
   ansible.builtin.command:
-    cmd: docker compose --env-file {{ app_env_file }} -f {{ app_compose_file }} ps
+    cmd: docker inspect --format={{ '{{' }}.State.Health.Status{{ '}}' }} {{ item }}
+    chdir: "{{ app_compose_dir }}"
+  loop: "{{ app_services }}"
+  register: health_result
+  until: health_result.stdout == "healthy"
+  retries: "{{ app_health_retries }}"
+  delay: "{{ app_health_delay }}"
+  changed_when: false
+
+- name: Collect the container status
+  ansible.builtin.command:
+    cmd: >-
+      docker compose --env-file {{ app_env_file }} --env-file {{ app_images_env_file }}
+      -f {{ app_compose_file }} ps
     chdir: "{{ app_compose_dir }}"
   register: ps_result
   changed_when: false
 
-- name: Show container status
+- name: Show the container status
   ansible.builtin.debug:
     var: ps_result.stdout_lines
+
+- name: Prune images left behind by the previous release
+  ansible.builtin.command:
+    cmd: docker image prune --force --filter until=168h
+  register: prune_result
+  changed_when: "'Total reclaimed space: 0B' not in prune_result.stdout"

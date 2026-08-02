@@ -1,17 +1,24 @@
 ---
-# INERT until VPS_DISPONIBLE=true and SOPS_AGE_KEY secret is configured.
-
 name: prod-deploy
 
 on:
   workflow_dispatch:
     inputs:
-      tag:
-        description: "Image tag to deploy (e.g. v0.4.2)"
+      api_tag:
+        description: "lumiris-api image tag (e.g. v0.4.2)"
+        type: string
+        required: true
+      front_tag:
+        description: "Front image tag — site/app/admin (e.g. v0.4.2)"
         type: string
         required: true
       force_recreate:
-        description: "Force recreate containers (cold-restart) instead of rolling"
+        description: "Cold-restart the containers instead of a rolling update"
+        type: boolean
+        required: false
+        default: false
+      trust_host_key_on_first_use:
+        description: "Accept the server host key via ssh-keyscan (only for the very first deploy)"
         type: boolean
         required: false
         default: false
@@ -19,81 +26,230 @@ on:
 permissions:
   contents: read
 
-env:
-  VPS_DISPONIBLE: "false"
-
 concurrency:
   group: prod-deploy
   cancel-in-progress: false
 
+env:
+  ANSIBLE_DIR: prod/ansible
+  SOPS_VERSION: 3.12.2
+
 jobs:
-  guard:
+  preflight:
+    name: Preflight
     runs-on: ubuntu-latest
-    timeout-minutes: 1
+    timeout-minutes: 10
+    outputs:
+      registry: ${{ steps.check.outputs.registry }}
+      namespace: ${{ steps.check.outputs.namespace }}
     steps:
-      - name: Refuse to deploy until VPS is ready
+      - name: Verify the deployment configuration is complete
+        env:
+          PROD_HOST: ${{ vars.PROD_HOST }}
+          PROD_USER: ${{ vars.PROD_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          SOPS_AGE_KEY: ${{ secrets.SOPS_AGE_KEY }}
         run: |
-          if [[ "${VPS_DISPONIBLE}" != "true" ]]; then
-            echo "::error::VPS pas encore disponible. Lis docs/MIGRATION-TO-PROD.md puis active VPS_DISPONIBLE=true dans ce workflow."
+          set -euo pipefail
+          missing=()
+          [[ -n "${PROD_HOST}" ]]       || missing+=("variable PROD_HOST")
+          [[ -n "${PROD_USER}" ]]       || missing+=("variable PROD_USER")
+          [[ -n "${DEPLOY_SSH_KEY}" ]]  || missing+=("secret DEPLOY_SSH_KEY")
+          [[ -n "${SOPS_AGE_KEY}" ]]    || missing+=("secret SOPS_AGE_KEY")
+          if (( ${#missing[@]} )); then
+            printf '::error::Missing deployment configuration: %s\n' "${missing[*]}"
+            echo "See .github/workflows/README.md for how to provision them."
             exit 1
           fi
-          echo "VPS_DISPONIBLE=true — proceeding."
+          echo "Deployment configuration is complete."
+
+      - name: Verify both images exist in the registry
+        id: check
+        env:
+          REGISTRY: ${{ vars.REGISTRY || 'ghcr.io' }}
+          NAMESPACE: ${{ vars.IMAGE_NAMESPACE || 'lumiris-dpp' }}
+          GHCR_TOKEN: ${{ secrets.GHCR_PULL_TOKEN || secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
+          API_TAG: ${{ inputs.api_tag }}
+          FRONT_TAG: ${{ inputs.front_tag }}
+        run: |
+          set -euo pipefail
+          echo "${GHCR_TOKEN}" | docker login "${REGISTRY}" -u "${GHCR_USER}" --password-stdin
+
+          fail=0
+          check() {
+            if docker manifest inspect "$1" >/dev/null 2>&1; then
+              echo "found  $1"
+            else
+              echo "::error::Image not found in the registry: $1"
+              fail=1
+            fi
+          }
+          check "${REGISTRY}/${NAMESPACE}/lumiris-api:${API_TAG}"
+          for img in lumiris-site lumiris-app lumiris-admin; do
+            check "${REGISTRY}/${NAMESPACE}/${img}:${FRONT_TAG}"
+          done
+          [[ "${fail}" -eq 0 ]] || {
+            echo "::error::Release the missing images before deploying."
+            exit 1
+          }
+
+          {
+            echo "registry=${REGISTRY}"
+            echo "namespace=${NAMESPACE}"
+          } >> "$GITHUB_OUTPUT"
 
   deploy:
-    needs: guard
+    name: Deploy
+    needs: preflight
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
 
       - name: Install sops
         run: |
-          curl -fsSL -o /tmp/sops https://github.com/getsops/sops/releases/download/v3.9.4/sops-v3.9.4.linux.amd64
+          set -euo pipefail
+          curl -fsSL -o /tmp/sops \
+            "https://github.com/getsops/sops/releases/download/v${SOPS_VERSION}/sops-v${SOPS_VERSION}.linux.amd64"
           chmod +x /tmp/sops
           sudo mv /tmp/sops /usr/local/bin/sops
+          sops --version
 
-      - name: Materialise age key
+      - name: Install Ansible
+        run: |
+          set -euo pipefail
+          pip install --no-cache-dir 'ansible-core>=2.17,<2.21'
+          ansible-galaxy collection install -r "${ANSIBLE_DIR}/requirements.yml"
+
+      - name: Materialise the age key
         env:
           SOPS_AGE_KEY: ${{ secrets.SOPS_AGE_KEY }}
         run: |
+          set -euo pipefail
           mkdir -p ~/.config/sops/age
           printf '%s\n' "$SOPS_AGE_KEY" > ~/.config/sops/age/keys.txt
           chmod 600 ~/.config/sops/age/keys.txt
           echo "SOPS_AGE_KEY_FILE=$HOME/.config/sops/age/keys.txt" >> "$GITHUB_ENV"
 
-      - name: Decrypt bootstrap secrets
+      - name: Materialise the SSH key and host key
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          PROD_HOST: ${{ vars.PROD_HOST }}
+          PROD_SSH_PORT: ${{ vars.PROD_SSH_PORT || '22' }}
+          TOFU: ${{ inputs.trust_host_key_on_first_use }}
         run: |
-          sops --decrypt secrets/prod.env.sops.yaml > /tmp/bootstrap.yml
-          python3 - <<'PY' >> "$GITHUB_ENV"
-          import yaml, os
-          data = yaml.safe_load(open('/tmp/bootstrap.yml'))
-          os.makedirs(os.path.expanduser('~/.ssh'), exist_ok=True)
-          key = data['ssh']['deploy_private_key']
-          with open(os.path.expanduser('~/.ssh/id_ed25519'), 'w') as f:
-              f.write(key)
-          os.chmod(os.path.expanduser('~/.ssh/id_ed25519'), 0o600)
-          print(f"VPS_HOST={data['vps']['ip']}")
-          print(f"VPS_PORT={data['vps']['ssh_port']}")
-          print(f"VPS_USER={data['vps']['ansible_user']}")
-          PY
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
 
-      - name: Install Ansible
-        run: pip install --no-cache-dir 'ansible-core>=2.20,<3.0' 'ansible>=11,<13'
+          if [[ -n "${DEPLOY_KNOWN_HOSTS}" ]]; then
+            printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+            echo "Host key pinned from the DEPLOY_KNOWN_HOSTS secret."
+          elif [[ "${TOFU}" == "true" ]]; then
+            ssh-keyscan -p "${PROD_SSH_PORT}" -H "${PROD_HOST}" > ~/.ssh/known_hosts 2>/dev/null
+            echo "::warning::Host key accepted on first use. Store it in the DEPLOY_KNOWN_HOSTS secret:"
+            echo "::warning::  ssh-keyscan -p ${PROD_SSH_PORT} -H <host>"
+          else
+            echo "::error::No DEPLOY_KNOWN_HOSTS secret. Set it, or re-run with trust_host_key_on_first_use."
+            exit 1
+          fi
+          chmod 600 ~/.ssh/known_hosts
 
-      - name: Materialise inventory
+      - name: Materialise the inventory
+        env:
+          PROD_HOST: ${{ vars.PROD_HOST }}
+          PROD_USER: ${{ vars.PROD_USER }}
+          PROD_SSH_PORT: ${{ vars.PROD_SSH_PORT || '22' }}
         run: |
-          sed -e "s/REPLACE_ME/${VPS_HOST}/" \
-              -e "s/ansible_user: ansible/ansible_user: ${VPS_USER}/" \
-              -e "s/ansible_port: 2222/ansible_port: ${VPS_PORT}/" \
-              prod/ansible/inventories/prod/hosts.yml.example \
-              > prod/ansible/inventories/prod/hosts.yml
+          set -euo pipefail
+          cat > "${ANSIBLE_DIR}/inventories/prod/hosts.yml" <<EOF
+          ---
+          lumiris_prod:
+            hosts:
+              lumiris-prod-1:
+                ansible_host: ${PROD_HOST}
+            vars:
+              ansible_user: ${PROD_USER}
+              ansible_port: ${PROD_SSH_PORT}
+              ansible_ssh_private_key_file: ~/.ssh/id_ed25519
+              ansible_python_interpreter: /usr/bin/python3
+          EOF
 
       - name: ansible-playbook deploy.yml
-        working-directory: prod/ansible
+        working-directory: ${{ env.ANSIBLE_DIR }}
         env:
-          ANSIBLE_HOST_KEY_CHECKING: "False"
+          ANSIBLE_FORCE_COLOR: "1"
+          GHCR_TOKEN: ${{ secrets.GHCR_PULL_TOKEN || secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
+          API_TAG: ${{ inputs.api_tag }}
+          FRONT_TAG: ${{ inputs.front_tag }}
+          FORCE_RECREATE: ${{ inputs.force_recreate }}
+          REGISTRY: ${{ needs.preflight.outputs.registry }}
+          NAMESPACE: ${{ needs.preflight.outputs.namespace }}
         run: |
+          set -euo pipefail
+          # An extra-vars file keeps the registry token out of the process list.
+          umask 077
+          VARS=$(mktemp)
+          trap 'rm -f "$VARS"' EXIT
+          python3 - "$VARS" <<'PY'
+          import json, os, sys
+          json.dump({
+              "api_image_tag": os.environ["API_TAG"],
+              "front_image_tag": os.environ["FRONT_TAG"],
+              "app_force_recreate": os.environ["FORCE_RECREATE"] == "true",
+              "app_registry": os.environ["REGISTRY"],
+              "app_image_namespace": os.environ["NAMESPACE"],
+              "ghcr_username": os.environ["GHCR_USER"],
+              "ghcr_token": os.environ["GHCR_TOKEN"],
+          }, open(sys.argv[1], "w"))
+          PY
           ansible-playbook playbooks/deploy.yml \
             -i inventories/prod/hosts.yml \
-            -e image_tag=${{ inputs.tag }} \
-            -e app_force_recreate=${{ inputs.force_recreate }}
+            -e "@${VARS}"
+
+      - name: Smoke-test the public endpoints
+        env:
+          DOMAIN: ${{ vars.PROD_DOMAIN || 'lumiris.eu' }}
+        run: |
+          set -euo pipefail
+          fail=0
+          probe() {
+            code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 --retry 3 --retry-delay 5 "$1" || echo 000)
+            if [[ "$code" =~ ^(200|301|302|307|308)$ ]]; then
+              echo "OK    $code  $1"
+            else
+              echo "::error::Smoke test failed with HTTP $code for $1"
+              fail=1
+            fi
+          }
+          probe "https://${DOMAIN}/"
+          probe "https://app.${DOMAIN}/"
+          probe "https://admin.${DOMAIN}/"
+          probe "https://api.${DOMAIN}/actuator/health/readiness"
+          exit "${fail}"
+
+      - name: Summarise the deploy
+        if: ${{ !cancelled() }}
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'SUMMARY'
+          ## Production deploy
+
+          | Component | Tag |
+          |---|---|
+          | `lumiris-api` | `${{ inputs.api_tag }}` |
+          | `lumiris-site` / `lumiris-app` / `lumiris-admin` | `${{ inputs.front_tag }}` |
+
+          Registry: `${{ needs.preflight.outputs.registry }}/${{ needs.preflight.outputs.namespace }}`
+
+          **Rollback** — re-run this workflow with the previous tags. The server keeps
+          the last seven days of images, so a rollback needs no rebuild.
+          SUMMARY

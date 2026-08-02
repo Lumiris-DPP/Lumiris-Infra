@@ -1,31 +1,41 @@
 ---
 # Runs as juba (no become): juba is in the docker + lumiris groups and can write
 # to /srv/lumiris and drive Docker directly.
+#
+# Images are built, scanned and signed by CI, then pulled from the registry — the
+# server never builds. Only this repo's runtime config is shipped to the box.
 
-- name: Sync repositories to the server (Docker build context)
+- name: Fail fast when the image tags are missing
+  ansible.builtin.assert:
+    that:
+      - api_image_tag | default('') | length > 0
+      - front_image_tag | default('') | length > 0
+    fail_msg: >-
+      Pass both -e api_image_tag=vX.Y.Z and -e front_image_tag=vX.Y.Z.
+      A deploy must name the exact versions it ships.
+
+- name: Ensure the compose directory exists
+  ansible.builtin.file:
+    path: "{{ app_compose_dir }}"
+    state: directory
+    mode: "0750"
+
+- name: Sync the runtime config to the server
   ansible.posix.synchronize:
-    src: "{{ lumiris_src_root }}/{{ item }}/"
-    dest: "{{ app_root }}/{{ item }}/"
+    src: "{{ infra_root }}/prod/"
+    dest: "{{ app_compose_dir }}/"
     delete: true
     recursive: true
     rsync_opts:
-      - "--exclude=.git"
-      - "--exclude=node_modules"
-      - "--exclude=.next"
-      - "--exclude=.turbo"
-      - "--exclude=target"
-      - "--exclude=dist"
-      - "--exclude=*.log"
       - "--exclude=.env"
       - "--exclude=.env.prod"
+      - "--exclude=.env.images"
+      - "--exclude=ansible"
+      - "--exclude=secrets"
       # Runtime-rendered CrowdSec LAPI key (overlay) — don't let --delete wipe it.
       - "--exclude=crowdsec/lapi-key"
-  loop:
-    - Lumiris-Front
-    - Lumiris-Backend
-    - Lumiris-Infra
 
-- name: Render runtime env from the SOPS-encrypted secrets file
+- name: Render the runtime env from the SOPS-encrypted secrets file
   ansible.builtin.copy:
     # The encrypted file is dotenv-formatted; its `.sops` extension isn't
     # auto-detected, so tell SOPS the type explicitly (else it tries JSON).
@@ -34,5 +44,24 @@
     mode: "0600"
   no_log: true
 
-- name: Build + start the stack
+- name: Pin the image tags for this deploy
+  ansible.builtin.copy:
+    content: |
+      REGISTRY={{ app_registry }}
+      IMAGE_NAMESPACE={{ app_image_namespace }}
+      API_IMAGE_TAG={{ api_image_tag }}
+      FRONT_IMAGE_TAG={{ front_image_tag }}
+    dest: "{{ app_images_env_file }}"
+    mode: "0644"
+
+- name: Authenticate against the container registry
+  ansible.builtin.command:
+    cmd: docker login {{ app_registry }} --username {{ ghcr_username | default('x-access-token') }} --password-stdin
+    stdin: "{{ ghcr_token }}"
+  when: ghcr_token | default('') | length > 0
+  register: registry_login
+  changed_when: "'Login Succeeded' in registry_login.stdout"
+  no_log: true
+
+- name: Pull, start and verify the stack
   ansible.builtin.include_tasks: compose-up.yml

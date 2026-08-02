@@ -1,42 +1,42 @@
 {
-    "dpp": {
-        "id": "dpp_bench_001",
-        "brand": "Lumiris Atelier",
-        "productName": "Linen Mock Tee",
-        "sku": "LUM-LIN-001",
-        "status": "Audit_Pending",
-        "submittedAt": "2026-04-26T08:00:00.000Z",
-        "auditorId": "auditor_42",
-        "dataIntegrity": 0.92,
-        "missingFields": [],
-        "supplierFactory": "ATL-PT-LIS-01",
-        "carbonScore": 4.1,
-        "rawData": {
-            "product_name": "Linen Mock Tee",
-            "material_composition": "100% European linen",
-            "country_of_origin": "PT",
-            "manufacturer": "Atelier Lis",
-            "recycled_content_percentage": 0,
-            "water_usage_liters": 1820,
-            "carbon_footprint_kg": 4.1,
-            "durability_score": "A",
-            "repairability_index": 7.4,
-            "eu_compliance_version": "ESPR-2025-Q1"
-        }
-    },
-    "certificates": [
-        {
-            "id": "cert_oeko_2026",
-            "brand": "Lumiris Atelier",
-            "documentName": "OEKO-TEX Standard 100",
-            "type": "OEKO-TEX",
-            "organization": "Hohenstein",
-            "expiryDate": "2027-03-31",
-            "scope": "fabric",
-            "factory": "ATL-PT-LIS-01",
-            "carbonScore": 4.1,
-            "status": "Valid",
-            "crossCheckFlag": false
-        }
-    ]
+  "dpp": {
+    "id": "dpp_bench_001",
+    "brand": "Lumiris Atelier",
+    "productName": "Linen Mock Tee",
+    "sku": "LUM-LIN-001",
+    "status": "Audit_Pending",
+    "submittedAt": "2026-04-26T08:00:00.000Z",
+    "auditorId": "auditor_42",
+    "dataIntegrity": 0.92,
+    "missingFields": [],
+    "supplierFactory": "ATL-PT-LIS-01",
+    "carbonScore": 4.1,
+    "rawData": {
+      "product_name": "Linen Mock Tee",
+      "material_composition": "100% European linen",
+      "country_of_origin": "PT",
+      "manufacturer": "Atelier Lis",
+      "recycled_content_percentage": 0,
+      "water_usage_liters": 1820,
+      "carbon_footprint_kg": 4.1,
+      "durability_score": "A",
+      "repairability_index": 7.4,
+      "eu_compliance_version": "ESPR-2025-Q1"
+    }
+  },
+  "certificates": [
+    {
+      "id": "cert_oeko_2026",
+      "brand": "Lumiris Atelier",
+      "documentName": "OEKO-TEX Standard 100",
+      "type": "OEKO-TEX",
+      "organization": "Hohenstein",
+      "expiryDate": "2027-03-31",
+      "scope": "fabric",
+      "factory": "ATL-PT-LIS-01",
+      "carbonScore": 4.1,
+      "status": "Valid",
+      "crossCheckFlag": false
+    }
+  ]
 }

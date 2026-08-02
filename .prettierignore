@@ -6,3 +6,7 @@ local/monitoring/grafana/dashboards
 secrets/*.decrypted
 secrets/*.dec
 bench/out
+
+# Gitignored working notes — absent from CI checkouts, so never gate on them.
+docs/
+context/

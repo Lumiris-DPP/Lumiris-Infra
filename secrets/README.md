@@ -2,10 +2,10 @@
 
 Two-level secret strategy:
 
-- **sops + age** for *bootstrap* secrets (the credentials needed to talk to
+- **sops + age** for _bootstrap_ secrets (the credentials needed to talk to
   Infisical and Cloudflare in the first place). These live in this directory,
   encrypted with the age recipients listed in [`../.sops.yaml`](../.sops.yaml).
-- **Infisical** for *runtime* secrets (DB URLs, API keys, JWT secrets, …).
+- **Infisical** for _runtime_ secrets (DB URLs, API keys, JWT secrets, …).
   Pulled by the VPS at compose-up time via `infisical run -- docker compose ...`.
 
 The split exists because Infisical itself needs credentials to be reachable —
@@ -60,7 +60,7 @@ Saves back encrypted in place.
 ## Hard rules
 
 - Never commit a plaintext `*.sops.yaml` (the `*.sops.yaml.example` files in
-  this directory are *templates* — they don't contain real secrets).
+  this directory are _templates_ — they don't contain real secrets).
 - Never paste a private age key anywhere except `~/.config/sops/age/keys.txt`
   with mode `0600`.
 - Rotate the prod recipients (`.sops.yaml`) whenever a maintainer leaves —

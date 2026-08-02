@@ -3,7 +3,7 @@ name: local-check
 
 on:
   push:
-    branches: [main, master]
+    branches: [main]
   pull_request:
 
 permissions:
@@ -15,15 +15,13 @@ concurrency:
 
 jobs:
   lint:
-    name: lint (yaml + shell + dockerfile + secrets + format)
+    name: yaml · shell · format
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
 
@@ -33,57 +31,106 @@ jobs:
       - name: yamllint
         run: yamllint -c .yamllint.yml .
 
-      - uses: ludeeus/action-shellcheck@2.0.0
+      - uses: ludeeus/action-shellcheck@00cae500b08a931fb5698e11e79bfbd38e612a38 # 2.0.0
         with:
           scandir: scripts
           additional_files: seed/apply-seed.sh
           severity: warning
 
-      - uses: hadolint/hadolint-action@v3.1.0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
-          recursive: true
-          ignore: DL3008,DL3015
-
-      - uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
+          node-version: "22"
 
       - name: prettier --check
         run: npx --yes prettier@3 --check '**/*.{md,yml,yaml,json}' --ignore-path .prettierignore
 
-  terraform-validate:
-    name: terraform fmt + validate
+  compose:
+    name: docker compose config
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: "1.13.0"
-          terraform_wrapper: false
+      - name: Validate the prod stack
+        working-directory: prod
+        env:
+          # The prod compose refuses to render without explicit image tags; these
+          # placeholders only prove the file parses.
+          API_IMAGE_TAG: v0.0.0
+          FRONT_IMAGE_TAG: v0.0.0
+        run: |
+          set -euo pipefail
+          docker compose -f docker-compose.prod.yml --env-file .env.prod.example config >/dev/null
+          echo "prod stack OK"
+          for overlay in docker-compose.monitoring.yml docker-compose.crowdsec.yml; do
+            docker compose -f docker-compose.prod.yml -f "$overlay" \
+              --env-file .env.prod.example config >/dev/null
+            echo "$overlay OK"
+          done
 
-      - name: terraform fmt -check -recursive
-        run: terraform fmt -check -recursive prod/terraform/
-
-      - name: terraform init -backend=false
-        working-directory: prod/terraform
-        run: terraform init -backend=false -input=false -no-color
-
-      - name: terraform validate
-        working-directory: prod/terraform
-        run: terraform validate -no-color
+      - name: Validate the local stack
+        working-directory: local
+        run: |
+          set -euo pipefail
+          docker compose -f docker-compose.yml --env-file .env.example config >/dev/null
+          echo "local stack OK"
 
   ansible-lint:
     name: ansible-lint
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: ansible/ansible-lint@v24.12.2
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: ansible/ansible-lint@262624cd0ab22a4221293216856c59671ce7aa5e # v26.6.0
         with:
           working_directory: prod/ansible
+
+  secret-scan:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+
+      - name: gitleaks detect
+        # The gitleaks marketplace action requires a paid licence for org-owned
+        # repos; the upstream binary is Apache-2.0 and has no such restriction.
+        env:
+          GITLEAKS_VERSION: 8.30.1
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /tmp/gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
+          /tmp/gitleaks git . --redact --verbose --exit-code 1
+
+      - name: Refuse plaintext in the SOPS-encrypted secrets
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          for f in prod/secrets/prod.env.sops secrets/*.sops.yaml; do
+            [ -e "$f" ] || continue
+            if ! grep -q 'sops_' "$f"; then
+              echo "::error file=$f::$f is not SOPS-encrypted — it must never be committed in clear."
+              exit 1
+            fi
+            echo "$f is encrypted"
+          done
+
+  actionlint:
+    name: actionlint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: actionlint
+        env:
+          ACTIONLINT_VERSION: 1.7.7
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /tmp/actionlint.tar.gz \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          tar -xzf /tmp/actionlint.tar.gz -C /tmp actionlint
+          /tmp/actionlint -color

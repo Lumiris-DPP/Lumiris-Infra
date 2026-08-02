@@ -99,10 +99,7 @@ services:
 
   # ── Backend API ─────────────────────────────────────────────────────────────
   lumiris-api:
-    image: lumiris-api:local
-    build:
-      context: ../../Lumiris-Backend
-      dockerfile: Dockerfile
+    image: ${REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-lumiris-dpp}/lumiris-api:${API_IMAGE_TAG:?set API_IMAGE_TAG}
     container_name: lumiris-api
     <<: *restart
     networks: [lumiris_prod]
@@ -169,25 +166,10 @@ services:
         limits: { cpus: "1.5", memory: 1024M }
         reservations: { cpus: "0.25", memory: 256M }
     logging: *default-logging
-    labels:
-      - traefik.enable=true
-      - traefik.docker.network=lumiris_prod
-      - traefik.http.routers.api.rule=Host(`api.${DOMAIN:-lumiris.eu}`)
-      - traefik.http.routers.api.entrypoints=websecure
-      - traefik.http.routers.api.tls.certresolver=letsencrypt
-      - traefik.http.routers.api.middlewares=security-headers@file,compress@file,rate-limit-api@file
-      - traefik.http.services.api.loadbalancer.server.port=8080
-      - traefik.http.services.api.loadbalancer.healthcheck.path=/actuator/health/readiness
 
   # ── Front-ends (Next.js standalone; API URL baked at build) ─────────────────
   lumiris-site:
-    image: lumiris-site:local
-    build:
-      context: ../../Lumiris-Front
-      dockerfile: apps/site/Dockerfile
-      args:
-        NEXT_PUBLIC_API_BASE_URL: https://api.${DOMAIN:-lumiris.eu}
-        NEXT_PUBLIC_SENTRY_DSN: ${SENTRY_DSN_SITE:-}
+    image: ${REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-lumiris-dpp}/lumiris-site:${FRONT_IMAGE_TAG:?set FRONT_IMAGE_TAG}
     container_name: lumiris-site
     <<: *restart
     networks: [lumiris_prod]
@@ -209,24 +191,10 @@ services:
       resources:
         limits: { cpus: "1.0", memory: 320M }
     logging: *default-logging
-    labels:
-      - traefik.enable=true
-      - traefik.docker.network=lumiris_prod
-      - traefik.http.routers.site.rule=Host(`${DOMAIN:-lumiris.eu}`) || Host(`www.${DOMAIN:-lumiris.eu}`)
-      - traefik.http.routers.site.entrypoints=websecure
-      - traefik.http.routers.site.tls.certresolver=letsencrypt
-      - traefik.http.routers.site.middlewares=security-headers@file,compress@file
-      - traefik.http.services.site.loadbalancer.server.port=3000
 
   # The client app → app.lumiris.eu (renamed from the old `client.` subdomain)
   lumiris-app:
-    image: lumiris-app:local
-    build:
-      context: ../../Lumiris-Front
-      dockerfile: apps/client/Dockerfile
-      args:
-        NEXT_PUBLIC_API_BASE_URL: https://api.${DOMAIN:-lumiris.eu}
-        NEXT_PUBLIC_SENTRY_DSN: ${SENTRY_DSN_CLIENT:-}
+    image: ${REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-lumiris-dpp}/lumiris-app:${FRONT_IMAGE_TAG:?set FRONT_IMAGE_TAG}
     container_name: lumiris-app
     <<: *restart
     networks: [lumiris_prod]
@@ -248,23 +216,9 @@ services:
       resources:
         limits: { cpus: "1.0", memory: 320M }
     logging: *default-logging
-    labels:
-      - traefik.enable=true
-      - traefik.docker.network=lumiris_prod
-      - traefik.http.routers.app.rule=Host(`app.${DOMAIN:-lumiris.eu}`)
-      - traefik.http.routers.app.entrypoints=websecure
-      - traefik.http.routers.app.tls.certresolver=letsencrypt
-      - traefik.http.routers.app.middlewares=security-headers@file,compress@file
-      - traefik.http.services.app.loadbalancer.server.port=3003
 
   lumiris-admin:
-    image: lumiris-admin:local
-    build:
-      context: ../../Lumiris-Front
-      dockerfile: apps/admin/Dockerfile
-      args:
-        NEXT_PUBLIC_API_BASE_URL: https://api.${DOMAIN:-lumiris.eu}
-        NEXT_PUBLIC_SENTRY_DSN: ${SENTRY_DSN_ADMIN:-}
+    image: ${REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-lumiris-dpp}/lumiris-admin:${FRONT_IMAGE_TAG:?set FRONT_IMAGE_TAG}
     container_name: lumiris-admin
     <<: *restart
     networks: [lumiris_prod]
@@ -286,14 +240,6 @@ services:
       resources:
         limits: { cpus: "1.0", memory: 320M }
     logging: *default-logging
-    labels:
-      - traefik.enable=true
-      - traefik.docker.network=lumiris_prod
-      - traefik.http.routers.admin.rule=Host(`admin.${DOMAIN:-lumiris.eu}`)
-      - traefik.http.routers.admin.entrypoints=websecure
-      - traefik.http.routers.admin.tls.certresolver=letsencrypt
-      - traefik.http.routers.admin.middlewares=security-headers@file,compress@file
-      - traefik.http.services.admin.loadbalancer.server.port=3001
 
 networks:
   lumiris_prod:

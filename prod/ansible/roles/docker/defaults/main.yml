@@ -3,5 +3,5 @@ docker_apt_release_channel: stable
 docker_log_max_size: "50m"
 docker_log_max_file: 5
 docker_default_address_pools:
-  - {base: "172.30.0.0/16", size: 24}
+  - { base: "172.30.0.0/16", size: 24 }
 docker_users: []

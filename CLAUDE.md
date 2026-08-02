@@ -72,20 +72,20 @@ Lint : `make lint` (yamllint + shellcheck + hadolint + gitleaks si installés).
 Cette table est la **référence canonique** ; les fichiers ci-dessous doivent
 rester alignés.
 
-| Service     | Vhost                   | Port host | Port container | Référencé par                                         |
-| ----------- | ----------------------- | --------- | -------------- | ----------------------------------------------------- |
-| site        | `lumiris.local`         | 3000      | —              | Front `apps/site/.env.example` · `prod/compose:lumiris-site` |
-| admin       | `admin.lumiris.local`   | 3001      | —              | Front `apps/admin/.env.example` · `prod/compose:lumiris-admin` |
-| mobile      | `mobile.lumiris.local`  | 3002      | —              | Front `apps/mobile/.env.example` · `prod/compose:lumiris-mobile` |
-| client      | `client.lumiris.local`  | 3003      | —              | Front `apps/client/.env.example` · `prod/compose:lumiris-client` |
+| Service     | Vhost                   | Port host | Port container | Référencé par                                                                       |
+| ----------- | ----------------------- | --------- | -------------- | ----------------------------------------------------------------------------------- |
+| site        | `lumiris.local`         | 3000      | —              | Front `apps/site/.env.example` · `prod/compose:lumiris-site`                        |
+| admin       | `admin.lumiris.local`   | 3001      | —              | Front `apps/admin/.env.example` · `prod/compose:lumiris-admin`                      |
+| mobile      | `mobile.lumiris.local`  | 3002      | —              | Front `apps/mobile/.env.example` · `prod/compose:lumiris-mobile`                    |
+| client      | `client.lumiris.local`  | 3003      | —              | Front `apps/client/.env.example` · `prod/compose:lumiris-client`                    |
 | api         | `api.lumiris.local`     | 8080      | 8080           | Backend `Dockerfile:EXPOSE 8080` · `Makefile:API_PORT` · `prod/compose:lumiris-api` |
-| postgres    | —                       | 5432      | 5432           | `local/docker-compose.yml` (POSTGRES_PORT)            |
-| redis       | —                       | 6379      | 6379           | `local/docker-compose.yml` (REDIS_PORT)               |
-| minio-s3    | `cdn.lumiris.local`     | 9000      | 9000           | `local/docker-compose.yml` (MINIO_API_PORT)           |
-| minio-cons. | `minio.lumiris.local`   | 9001      | 9001           | `local/docker-compose.yml` (MINIO_CONSOLE_PORT)       |
-| mailhog     | `mailhog.lumiris.local` | 1025/8025 | 1025/8025      | `local/docker-compose.yml`                            |
-| otlp http   | —                       | 4318      | 4318           | OTel collector (profile monitoring)                   |
-| traefik     | `traefik.lumiris.local` | 80/443    | 80/443         | `local/docker-compose.yml` (entrypoints)              |
+| postgres    | —                       | 5432      | 5432           | `local/docker-compose.yml` (POSTGRES_PORT)                                          |
+| redis       | —                       | 6379      | 6379           | `local/docker-compose.yml` (REDIS_PORT)                                             |
+| minio-s3    | `cdn.lumiris.local`     | 9000      | 9000           | `local/docker-compose.yml` (MINIO_API_PORT)                                         |
+| minio-cons. | `minio.lumiris.local`   | 9001      | 9001           | `local/docker-compose.yml` (MINIO_CONSOLE_PORT)                                     |
+| mailhog     | `mailhog.lumiris.local` | 1025/8025 | 1025/8025      | `local/docker-compose.yml`                                                          |
+| otlp http   | —                       | 4318      | 4318           | OTel collector (profile monitoring)                                                 |
+| traefik     | `traefik.lumiris.local` | 80/443    | 80/443         | `local/docker-compose.yml` (entrypoints)                                            |
 
 **Variables d'env** (Lumiris-Infra/local/.env) qui pilotent les ports exposés :
 `POSTGRES_PORT`, `REDIS_PORT`, `MINIO_API_PORT`, `MINIO_CONSOLE_PORT`. La prod

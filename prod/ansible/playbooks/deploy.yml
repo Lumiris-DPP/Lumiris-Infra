@@ -1,11 +1,12 @@
 ---
-# Deploy / update the app: sync repos → decrypt secrets → docker compose build + up.
+# Deploy / update the app: sync runtime config → decrypt secrets → pull the
+# CI-built images → compose up → wait for health.
 # Runs as juba directly (juba is in the docker + lumiris groups, no sudo needed):
-#   ansible-playbook playbooks/deploy.yml
+#   ansible-playbook playbooks/deploy.yml -e api_image_tag=v0.4.2 -e front_image_tag=v0.4.2
 - name: Lumiris prod — deploy
   hosts: lumiris_prod
   become: false
   gather_facts: false
   tags: [deploy]
   roles:
-    - {role: app, tags: [app]}
+    - { role: app, tags: [app] }

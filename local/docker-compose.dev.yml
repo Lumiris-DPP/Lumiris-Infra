@@ -5,11 +5,11 @@ x-bun-defaults: &bun-defaults
   working_dir: /repo
   environment:
     NODE_ENV: development
-    WATCHPACK_POLLING: 'true'
-    CHOKIDAR_USEPOLLING: 'true'
+    WATCHPACK_POLLING: "true"
+    CHOKIDAR_USEPOLLING: "true"
   networks: [lumiris_local]
   extra_hosts:
-    - 'host.docker.internal:host-gateway'
+    - "host.docker.internal:host-gateway"
   healthcheck:
     disable: true
 
@@ -17,8 +17,8 @@ services:
   admin:
     <<: *bun-defaults
     container_name: lumiris-admin-dev
-    command: ['bun', 'run', 'dev:admin']
-    ports: ['127.0.0.1:3001:3001']
+    command: ["bun", "run", "dev:admin"]
+    ports: ["127.0.0.1:3001:3001"]
     volumes:
       - ../../Lumiris-Front:/repo
       - /repo/node_modules
@@ -33,8 +33,8 @@ services:
   site:
     <<: *bun-defaults
     container_name: lumiris-site-dev
-    command: ['bun', 'run', 'dev:site']
-    ports: ['127.0.0.1:3000:3000']
+    command: ["bun", "run", "dev:site"]
+    ports: ["127.0.0.1:3000:3000"]
     volumes:
       - ../../Lumiris-Front:/repo
       - /repo/node_modules
@@ -49,8 +49,8 @@ services:
   mobile:
     <<: *bun-defaults
     container_name: lumiris-mobile-dev
-    command: ['bun', 'run', 'dev:mobile']
-    ports: ['127.0.0.1:3002:3002']
+    command: ["bun", "run", "dev:mobile"]
+    ports: ["127.0.0.1:3002:3002"]
     volumes:
       - ../../Lumiris-Front:/repo
       - /repo/node_modules
@@ -65,8 +65,8 @@ services:
   client:
     <<: *bun-defaults
     container_name: lumiris-client-dev
-    command: ['bun', 'run', 'dev:client']
-    ports: ['127.0.0.1:3003:3003']
+    command: ["bun", "run", "dev:client"]
+    ports: ["127.0.0.1:3003:3003"]
     volumes:
       - ../../Lumiris-Front:/repo
       - /repo/node_modules

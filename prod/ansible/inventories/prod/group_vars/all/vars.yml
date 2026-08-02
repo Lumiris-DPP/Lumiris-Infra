@@ -11,31 +11,36 @@ lumiris_acme_email: ops@lumiris.eu
 # as juba directly — juba is in the docker + lumiris groups).
 
 # ── Host hardening (conservative on a shared / prof-managed server) ──────────
-common_harden_ssh: false          # do NOT rewrite the prof's sshd_config / change port
-admin_users: []                   # juba already exists; manage no extra users
+common_harden_ssh: false # do NOT rewrite the prof's sshd_config / change port
+admin_users: [] # juba already exists; manage no extra users
 common_swap_size_mb: 2048
 
 ufw_default_input_policy: deny
 ufw_allowed_ports:
-  - {port: 22, proto: tcp, comment: "SSH"}
-  - {port: 80, proto: tcp, comment: "HTTP (ACME + redirect)"}
-  - {port: 443, proto: tcp, comment: "HTTPS"}
+  - { port: 22, proto: tcp, comment: "SSH" }
+  - { port: 80, proto: tcp, comment: "HTTP (ACME + redirect)" }
+  - { port: 443, proto: tcp, comment: "HTTPS" }
 
 # ── Docker ───────────────────────────────────────────────────────────────────
 docker_users: [juba]
 docker_log_max_size: "20m"
 docker_log_max_file: 5
 
-# ── App deploy — build images locally on the box from the synced repos ───────
-# lumiris_src_root resolves to ~/Dev/Lumiris on the Ansible controller (your machine).
-lumiris_src_root: "{{ playbook_dir }}/../../../.."
-app_root: /srv/lumiris                                 # the 3 repos are synced here
+# ── App deploy — pull CI-built images, never build on the box ────────────────
+# infra_root resolves to this repo's root on the Ansible controller, whether that
+# is your laptop or a GitHub runner that checked the repo out.
+infra_root: "{{ playbook_dir }}/../../.." # Lumiris-Infra/
+app_root: /srv/lumiris
 app_compose_dir: /srv/lumiris/Lumiris-Infra/prod
 app_compose_file: docker-compose.prod.yml
 
-# Runtime secrets: SOPS-encrypted file, decrypted on the controller at deploy time.
-app_sops_env_file: "{{ lumiris_src_root }}/Lumiris-Infra/prod/secrets/prod.env.sops"
-app_env_file: "{{ app_compose_dir }}/.env.prod"
+app_registry: ghcr.io
+app_image_namespace: lumiris-dpp
 
-app_healthcheck_retries: 40
-app_healthcheck_delay: 5
+# Runtime secrets: SOPS-encrypted file, decrypted on the controller at deploy time.
+app_sops_env_file: "{{ infra_root }}/prod/secrets/prod.env.sops"
+app_env_file: "{{ app_compose_dir }}/.env.prod"
+app_images_env_file: "{{ app_compose_dir }}/.env.images"
+
+app_health_retries: 40
+app_health_delay: 5

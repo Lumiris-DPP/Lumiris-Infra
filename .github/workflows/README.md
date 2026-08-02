@@ -1,41 +1,81 @@
 # GitHub Actions workflows
 
-## Active
+The pipeline spans three repositories. Images are built, scanned and signed by CI,
+pushed to GHCR, then pulled by the server — **the VPS never builds anything**.
 
-- **[`local-check.yml`](local-check.yml)** — runs on every push / PR. Three jobs:
-  - `lint` — yamllint, shellcheck, hadolint, gitleaks, prettier
-  - `terraform-validate` — `terraform fmt -check -recursive` then `init -backend=false` + `validate`
-  - `ansible-lint` — `ansible-lint` against `prod/ansible/`
+```
+Lumiris-Backend ──tag v*──► ghcr.io/lumiris-dpp/lumiris-api
+Lumiris-Front   ──tag v*──► ghcr.io/lumiris-dpp/lumiris-{site,app,admin,mobile}
+                                          │
+Lumiris-Infra   prod-deploy (manual) ─────┴──► Ansible over SSH ──► docker compose pull && up -d
+```
 
-  Concurrency cancels in-progress runs on the same ref. Each job has a 10-minute timeout.
+## Workflows in this repo
 
-## Inert (workflow_dispatch only)
+### `local-check.yml` — every push and PR
 
-- **[`prod-terraform-plan.yml`](prod-terraform-plan.yml)** — decrypts
-  `secrets/prod.env.sops.yaml` with `SOPS_AGE_KEY` (repo secret), runs
-  `terraform plan` for the prod env, posts the plan to the job summary.
-  Activate when bootstrap secrets are filled in (`docs/MIGRATION-TO-PROD.md` step 4).
+| Job            | What it gates                                                         |
+| -------------- | --------------------------------------------------------------------- |
+| `lint`         | yamllint, shellcheck (`scripts/` + `seed/apply-seed.sh`), prettier    |
+| `compose`      | `docker compose config` on the prod stack, both overlays, local stack |
+| `ansible-lint` | `prod/ansible/` at the **production** profile                         |
+| `secret-scan`  | gitleaks + a check that `*.sops` files really are encrypted           |
+| `actionlint`   | the workflows themselves                                              |
 
-- **[`prod-deploy.yml`](prod-deploy.yml)** — guarded by `env.VPS_DISPONIBLE='false'`.
-  Refuses to run until you flip that to `'true'`. When active, takes a `tag`
-  input (`v0.4.2`), decrypts secrets, materialises the inventory, and runs
-  `ansible-playbook deploy.yml`. Inputs include a `force_recreate` toggle for
-  cold-restart deploys.
+### `prod-deploy.yml` — manual (`workflow_dispatch`)
 
-## Coming later (placeholders, not files)
+Inputs: `api_tag`, `front_tag`, `force_recreate`, `trust_host_key_on_first_use`.
 
-- Renovate (or Dependabot) for image tag bumps in `docker-compose.prod.yml`
-  and pinned Terraform/Ansible versions.
-- A `release-images.yml` per app repo (`Lumiris-Backend`, `Lumiris-Front`)
-  that builds + pushes `ghcr.io/jubs-kan3ki/lumiris-*:vX.Y.Z` on tag push.
+1. **Preflight** — refuses to start unless every secret and variable is present,
+   and verifies both image tags actually exist in the registry. Nothing touches
+   production until this passes.
+2. **Deploy** — installs sops + Ansible, materialises the age key, the SSH key and
+   the pinned host key, renders the inventory, then runs `playbooks/deploy.yml`.
+3. **Smoke test** — probes the four public endpoints and fails the run if any is down.
 
-## Required repo secrets (set at activation time)
+**Rollback** — re-run with the previous tags. Images from the last seven days stay
+on the box, so a rollback needs no rebuild.
 
-- `SOPS_AGE_KEY` — the private age key as text (`AGE-SECRET-KEY-...`). Used by
-  `prod-terraform-plan.yml` and `prod-deploy.yml`.
-- `GITHUB_TOKEN` — provided automatically by GitHub, used by gitleaks.
+The same playbook runs from a laptop:
+
+```bash
+cd prod/ansible
+ansible-playbook playbooks/deploy.yml -e api_image_tag=v0.4.2 -e front_image_tag=v0.4.2
+```
+
+## Required configuration
+
+Repository **variables** (Settings → Secrets and variables → Actions → Variables):
+
+| Variable          | Example       | Required                       |
+| ----------------- | ------------- | ------------------------------ |
+| `PROD_HOST`       | `51.15.x.x`   | yes                            |
+| `PROD_USER`       | `juba`        | yes                            |
+| `PROD_SSH_PORT`   | `22`          | no — defaults to `22`          |
+| `PROD_DOMAIN`     | `lumiris.eu`  | no — defaults to `lumiris.eu`  |
+| `REGISTRY`        | `ghcr.io`     | no — defaults to `ghcr.io`     |
+| `IMAGE_NAMESPACE` | `lumiris-dpp` | no — defaults to `lumiris-dpp` |
+
+Repository **secrets**:
+
+| Secret               | What it is                                                             |
+| -------------------- | ---------------------------------------------------------------------- |
+| `DEPLOY_SSH_KEY`     | Private half of the CI-only ed25519 deploy key                         |
+| `DEPLOY_KNOWN_HOSTS` | Output of `ssh-keyscan -p <port> -H <host>` — pins the server identity |
+| `SOPS_AGE_KEY`       | `AGE-SECRET-KEY-…` used to decrypt `prod/secrets/prod.env.sops`        |
+| `GHCR_PULL_TOKEN`    | Optional PAT with `read:packages`, if the packages are not public      |
+
+`GITHUB_TOKEN` is provided automatically and is used as the registry fallback.
+
+## Host key policy
+
+Host key verification is **on**. The first deploy of a new server can be run with
+`trust_host_key_on_first_use = true`, which records the key via `ssh-keyscan` and
+prints it so it can be stored in `DEPLOY_KNOWN_HOSTS`. Every later run pins it.
 
 ## Pinning policy
 
-Every action is pinned to a released version (no `@main`, no floating tags).
-When bumping, update both this README and the workflow file in the same commit.
+Every third-party action is pinned to a **full commit SHA** with the version in a
+trailing comment — a moved tag cannot change what runs. Dependabot bumps the SHA
+and the comment together. Tools without a trustworthy action (gitleaks, actionlint)
+are downloaded as pinned release binaries instead.

@@ -30,10 +30,10 @@ services:
     networks: [lumiris_prod]
     deploy:
       resources:
-        limits: {cpus: '0.5', memory: 200M}
+        limits: { cpus: "0.5", memory: 200M }
     logging:
       driver: json-file
-      options: {max-size: '10m', max-file: '3'}
+      options: { max-size: "10m", max-file: "3" }
 
 volumes:
   alloy_data:

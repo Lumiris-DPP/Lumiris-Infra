@@ -38,6 +38,7 @@ SCRIPTS_DIR="$ROOT/scripts"
 export ROOT LOCAL_DIR SCRIPTS_DIR
 
 # Format: "label|host|description". Source de vérité pour setup-hosts.sh.
+# shellcheck disable=SC2034  # consumed by the scripts that source this library
 SERVICES=(
   "Site      |lumiris.local         |Vitrine (host:3000)"
   "Admin     |admin.lumiris.local   |Admin (host:3001)"

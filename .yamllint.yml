@@ -8,12 +8,20 @@ rules:
   comments:
     min-spaces-from-content: 1
   truthy:
-    allowed-values: ['true', 'false', 'on', 'off']
+    allowed-values: ["true", "false", "on", "off"]
     check-keys: false
   document-start: disable
   indentation:
     spaces: 2
     indent-sequences: consistent
+  # Prettier is the sole YAML formatter here; it emits `{ a: 1 }` and `[ 1 ]`,
+  # so yamllint must accept one space inside flow collections.
+  braces:
+    min-spaces-inside: 0
+    max-spaces-inside: 1
+  brackets:
+    min-spaces-inside: 0
+    max-spaces-inside: 1
 
 ignore: |
   local/monitoring/grafana/dashboards/*.json

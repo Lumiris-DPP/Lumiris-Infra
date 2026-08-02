@@ -16,15 +16,17 @@
         state: directory
         mode: "0750"
 
-    - name: pg_dump from the postgres container → gzip
+    - name: Dump the postgres database and gzip it
       ansible.builtin.shell:
         cmd: >-
+          set -o pipefail &&
           docker exec lumiris-postgres sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"'
           | gzip > {{ backup_dir }}/lumiris-{{ ansible_date_time.iso8601_basic_short }}.sql.gz
+        executable: /bin/bash
       register: dump_result
       changed_when: dump_result.rc == 0
 
-    - name: Prune dumps older than {{ backup_keep_days }} days
+    - name: Find dumps past the retention window
       ansible.builtin.find:
         paths: "{{ backup_dir }}"
         age: "{{ backup_keep_days }}d"

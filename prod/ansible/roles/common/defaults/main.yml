@@ -5,7 +5,7 @@ common_swap_size_mb: 2048
 common_swap_file: /var/swap
 common_unattended_upgrades: true
 
-common_harden_ssh: false          # when true, rewrites sshd_config (see ssh.yml)
+common_harden_ssh: false # when true, rewrites sshd_config (see ssh.yml)
 ssh_port: 22
 ssh_allowed_users: [juba]
 ssh_password_authentication: false

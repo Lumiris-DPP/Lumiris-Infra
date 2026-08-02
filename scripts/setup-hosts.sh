@@ -20,8 +20,8 @@ trap 'rm -f "$TMP_BLOCK"' EXIT
 {
   echo ""
   echo "$SENTINEL_START"
-  for entry in "${SERVICES[@]}"; do
-    printf "127.0.0.1\t%s\n" "$(service_field "$entry" 2)"
+  service_hosts | while read -r host; do
+    printf "127.0.0.1\t%s\n" "$host"
   done
   echo "$SENTINEL_END"
 } > "$TMP_BLOCK"
@@ -39,4 +39,4 @@ else
   warn "Le ping a échoué — la résolution DNS peut être mise en cache. Réessaie dans quelques secondes."
 fi
 
-ok "setup-hosts terminé. Vhosts configurés : ${#SERVICES[@]}"
+ok "setup-hosts terminé. Vhosts configurés : $(service_hosts | wc -l)"

@@ -188,19 +188,26 @@ stripe trigger --api-key "$(grep -E '^STRIPE_SECRET_KEY=' Lumiris-Backend/.env |
   customer.subscription.created
 ```
 
-## Phase 2 — Production
+## Production
 
-Le dossier `prod/` est **inerte** mais complet : `docker-compose.prod.yml`
-final, modules Terraform (Cloudflare DNS + R2 + Infisical + Grafana Cloud),
-roles Ansible (common, docker, infisical, traefik, monitoring, app), configs
-Traefik et OTel collector. Lint clean (`make prod-check`).
+Serveur unique auto-hébergé. La CI construit, scanne et signe les images puis les
+pousse sur GHCR ; le serveur ne construit jamais rien, il ne fait que tirer.
 
-Quand le VPS sera disponible :
+Déploiement courant — workflow **prod-deploy** sur GitHub (approbation manuelle
+requise), ou en local :
 
-1. Suivre la checklist comptes externes : [`docs/ONBOARDING-PROD.md`](docs/ONBOARDING-PROD.md)
-2. Remplir + chiffrer `secrets/prod.env.sops.yaml`
-3. Remplir `prod/terraform/envs/prod/terraform.tfvars` + `prod/ansible/inventories/prod/hosts.yml`
-4. Lancer `make prod-bootstrap` (interactif, refuse gracieusement tant qu'une pièce manque)
+```bash
+make prod-deploy API_TAG=v0.4.2 FRONT_TAG=v0.4.2
+```
+
+Première mise en service d'un serveur :
+
+1. Remplir + chiffrer `prod/secrets/prod.env.sops`
+2. Remplir `prod/ansible/inventories/prod/hosts.yml`
+3. Lancer `API_TAG=vX.Y.Z FRONT_TAG=vX.Y.Z make prod-bootstrap` (interactif, refuse tant qu'une pièce manque)
+
+Détail : [`prod/README.md`](prod/README.md) et
+[`.github/workflows/README.md`](.github/workflows/README.md).
 
 Détail complet : [`docs/MIGRATION-TO-PROD.md`](docs/MIGRATION-TO-PROD.md). Coûts attendus : [`docs/COSTS.md`](docs/COSTS.md).
 

@@ -38,7 +38,6 @@ SCRIPTS_DIR="$ROOT/scripts"
 export ROOT LOCAL_DIR SCRIPTS_DIR
 
 # Format: "label|host|description". Source de vérité pour setup-hosts.sh.
-# shellcheck disable=SC2034  # consumed by the scripts that source this library
 SERVICES=(
   "Site      |lumiris.local         |Vitrine (host:3000)"
   "Admin     |admin.lumiris.local   |Admin (host:3001)"
@@ -64,6 +63,15 @@ service_field() {
     2) _trim "$f2" ;;
     3) _trim "$f3" ;;
   esac
+}
+
+# One vhost per line, in declaration order. service_field does not terminate its
+# output, so the newline is added here.
+service_hosts() {
+  local entry
+  for entry in "${SERVICES[@]}"; do
+    printf '%s\n' "$(service_field "$entry" 2)"
+  done
 }
 
 # Args: url [timeout=2]; prints status code or "DOWN".

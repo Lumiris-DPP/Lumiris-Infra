@@ -16,7 +16,7 @@
 ```
 Lumiris-Infra/
 ├── local/             # Docker compose dev (base + monitoring + tools overlays)
-├── prod/              # Terraform + Ansible + compose.prod (inert until VPS bootstrapped)
+├── prod/              # Ansible + compose.prod (images GHCR) + traefik + secrets SOPS
 ├── scripts/           # _lib.sh + setup-{hosts,certs}.sh + smoke-test + secrets-*.sh + seed
 ├── seed/              # apply-seed.sh + fixtures
 ├── secrets/           # *.sops.yaml (chiffrés via age)
@@ -105,12 +105,15 @@ front + les 4 ports localhost** ci-dessus. Validation runtime : Spring logue
 - Helpers : `scripts/secrets-{encrypt,decrypt,rotate}.sh`
 - Rotation après ajout/retrait d'un mainteneur : `./scripts/secrets-rotate.sh`
 
-## Phase 2 — Prod
+## Prod — images CI, jamais de build sur le serveur
 
-`prod/` est inert tant que `make prod-bootstrap` n'a pas été exécuté. Voir
-[`docs/MIGRATION-TO-PROD.md`](docs/MIGRATION-TO-PROD.md) pour la checklist.
-`make prod-check` lint le scaffolding (terraform fmt/validate, ansible-lint,
-yamllint, shellcheck).
+La CI construit, scanne et signe les images puis les pousse sur GHCR ; Ansible ne
+fait que les tirer. Déploiement : workflow **prod-deploy** (approbation manuelle
+via l'environnement `production`) ou, en local, `make prod-deploy API_TAG=vX.Y.Z
+FRONT_TAG=vX.Y.Z`. Rollback = redéployer les tags précédents.
+
+`make prod-check` rejoue exactement le gate de la CI (yamllint, shellcheck,
+prettier, ansible-lint profil production, `docker compose config`).
 
 ## Voir aussi
 

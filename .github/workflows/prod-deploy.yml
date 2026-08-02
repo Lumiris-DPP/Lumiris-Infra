@@ -43,25 +43,21 @@ jobs:
       registry: ${{ steps.check.outputs.registry }}
       namespace: ${{ steps.check.outputs.namespace }}
     steps:
-      - name: Verify the deployment configuration is complete
+      - name: Verify the target is configured
         env:
           PROD_HOST: ${{ vars.PROD_HOST }}
           PROD_USER: ${{ vars.PROD_USER }}
-          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-          SOPS_AGE_KEY: ${{ secrets.SOPS_AGE_KEY }}
         run: |
           set -euo pipefail
           missing=()
-          [[ -n "${PROD_HOST}" ]]       || missing+=("variable PROD_HOST")
-          [[ -n "${PROD_USER}" ]]       || missing+=("variable PROD_USER")
-          [[ -n "${DEPLOY_SSH_KEY}" ]]  || missing+=("secret DEPLOY_SSH_KEY")
-          [[ -n "${SOPS_AGE_KEY}" ]]    || missing+=("secret SOPS_AGE_KEY")
+          [[ -n "${PROD_HOST}" ]] || missing+=("variable PROD_HOST")
+          [[ -n "${PROD_USER}" ]] || missing+=("variable PROD_USER")
           if (( ${#missing[@]} )); then
             printf '::error::Missing deployment configuration: %s\n' "${missing[*]}"
             echo "See .github/workflows/README.md for how to provision them."
             exit 1
           fi
-          echo "Deployment configuration is complete."
+          echo "Target is configured."
 
       - name: Verify both images exist in the registry
         id: check
@@ -104,7 +100,26 @@ jobs:
     needs: preflight
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # Holds the SSH and age keys, and gates every run behind a manual approval.
+    environment:
+      name: production
+      url: https://${{ vars.PROD_DOMAIN || 'lumiris.eu' }}
     steps:
+      - name: Verify the production environment holds its secrets
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          SOPS_AGE_KEY: ${{ secrets.SOPS_AGE_KEY }}
+        run: |
+          set -euo pipefail
+          missing=()
+          [[ -n "${DEPLOY_SSH_KEY}" ]] || missing+=("DEPLOY_SSH_KEY")
+          [[ -n "${SOPS_AGE_KEY}" ]]   || missing+=("SOPS_AGE_KEY")
+          if (( ${#missing[@]} )); then
+            printf '::error::Missing secrets on the production environment: %s\n' "${missing[*]}"
+            exit 1
+          fi
+          echo "Environment secrets are present."
+
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6

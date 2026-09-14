@@ -2,12 +2,12 @@
 
 Four scenarios live here, one file per surface under load:
 
-| File                            | Surface | Goal                                                    |
-| -------------------------------- | ------- | -------------------------------------------------------- |
-| `scenarios/browse.js`           | `web`   | Public pages stay fast under organic traffic.           |
-| `scenarios/audit.js`            | `admin` | Auditors keep working through a busy day.               |
-| `scenarios/scoring.js`          | `api`   | `/score` p95 stays under **250 ms**.                    |
-| `scenarios/passport-lookup.js`  | `api`   | Public passport lookup p95 stays under **80 ms**.       |
+| File                           | Surface | Goal                                              |
+| ------------------------------ | ------- | ------------------------------------------------- |
+| `scenarios/browse.js`          | `web`   | Public pages stay fast under organic traffic.     |
+| `scenarios/audit.js`           | `admin` | Auditors keep working through a busy day.         |
+| `scenarios/scoring.js`         | `api`   | `/score` p95 stays under **250 ms**.              |
+| `scenarios/passport-lookup.js` | `api`   | Public passport lookup p95 stays under **80 ms**. |
 
 ## Run locally
 

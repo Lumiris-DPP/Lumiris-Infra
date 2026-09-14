@@ -4,6 +4,7 @@ datasources:
   - name: Prometheus
     type: prometheus
     access: proxy
+    uid: prometheus
     url: http://prometheus:9090
     isDefault: true
     jsonData:
@@ -14,6 +15,7 @@ datasources:
   - name: Tempo
     type: tempo
     access: proxy
+    uid: tempo
     url: http://tempo:3200
     jsonData:
       tracesToLogsV2:

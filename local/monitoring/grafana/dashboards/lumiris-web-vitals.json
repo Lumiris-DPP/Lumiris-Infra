@@ -1,0 +1,212 @@
+{
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "timezone": "browser",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "refresh": "30s",
+  "templating": {
+    "list": [
+      {
+        "name": "app",
+        "type": "query",
+        "label": "App",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": "label_values(lumiris_web_vital_count, app)",
+        "includeAll": true,
+        "multi": true
+      }
+    ]
+  },
+  "uid": "lumiris-web-vitals",
+  "title": "LUMIRIS — Web Vitals",
+  "tags": [
+    "lumiris",
+    "web-vitals"
+  ],
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Web Vitals — LCP p75 (per app)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.75, sum by (app, le) (rate(lumiris_web_vital_bucket{name=\"LCP\", app=~\"$app\"}[5m])))",
+          "legendFormat": "{{app}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 2500
+              },
+              {
+                "color": "red",
+                "value": 4000
+              }
+            ]
+          }
+        }
+      },
+      "id": 1
+    },
+    {
+      "type": "timeseries",
+      "title": "Web Vitals — INP p75 (replaces FID, per app)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 0,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.75, sum by (app, le) (rate(lumiris_web_vital_bucket{name=~\"INP|FID\", app=~\"$app\"}[5m])))",
+          "legendFormat": "{{app}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 200
+              },
+              {
+                "color": "red",
+                "value": 500
+              }
+            ]
+          }
+        }
+      },
+      "id": 2
+    },
+    {
+      "type": "timeseries",
+      "title": "Web Vitals — CLS p75 (per app)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 0,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.75, sum by (app, le) (rate(lumiris_web_vital_bucket{name=\"CLS\", app=~\"$app\"}[5m])))",
+          "legendFormat": "{{app}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 3,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.1
+              },
+              {
+                "color": "red",
+                "value": 0.25
+              }
+            ]
+          }
+        }
+      },
+      "id": 3
+    },
+    {
+      "type": "timeseries",
+      "title": "Web Vitals — count by name/rating",
+      "gridPos": {
+        "x": 12,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (name, rating) (rate(web_vitals_total{app=~\"$app\"}[5m]))",
+          "legendFormat": "{{name}} / {{rating}}"
+        }
+      ],
+      "id": 4
+    },
+    {
+      "type": "timeseries",
+      "title": "Web Vitals — distribution avg by metric",
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (name) (rate(web_vitals_value_sum{app=~\"$app\"}[5m])) / sum by (name) (rate(web_vitals_value_count{app=~\"$app\"}[5m]))",
+          "legendFormat": "{{name}} avg"
+        }
+      ],
+      "id": 5
+    }
+  ]
+}

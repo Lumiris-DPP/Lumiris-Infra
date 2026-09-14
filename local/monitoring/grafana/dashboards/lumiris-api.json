@@ -1,144 +1,324 @@
 {
-    "uid": "lumiris-api",
-    "title": "LUMIRIS — API Backend",
-    "tags": ["lumiris", "spring-boot", "api"],
-    "schemaVersion": 39,
-    "version": 1,
-    "editable": true,
-    "timezone": "browser",
-    "time": { "from": "now-1h", "to": "now" },
-    "refresh": "30s",
-    "templating": {
-        "list": [
-            {
-                "name": "app",
-                "type": "query",
-                "label": "App",
-                "datasource": { "type": "prometheus", "uid": "prometheus" },
-                "query": "label_values(web_vitals_total, app)",
-                "includeAll": true,
-                "multi": true,
-                "current": { "selected": false, "text": "All", "value": "$__all" }
-            }
-        ]
-    },
-    "panels": [
-        {
-            "type": "stat",
-            "title": "Storage Health",
-            "gridPos": { "x": 0, "y": 0, "w": 4, "h": 4 },
-            "datasource": { "type": "prometheus", "uid": "prometheus" },
-            "targets": [
-                { "refId": "A", "expr": "max(up{job=\"lumiris-api\"})" }
-            ],
-            "options": {
-                "reduceOptions": { "calcs": ["lastNotNull"], "fields": "" },
-                "colorMode": "background",
-                "graphMode": "none",
-                "textMode": "value_and_name"
-            },
-            "fieldConfig": {
-                "defaults": {
-                    "mappings": [
-                        { "type": "value", "options": { "0": { "text": "DOWN", "color": "red" } } },
-                        { "type": "value", "options": { "1": { "text": "UP", "color": "green" } } }
-                    ],
-                    "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
-                }
-            }
+  "uid": "lumiris-api",
+  "title": "LUMIRIS — API Backend",
+  "tags": [
+    "lumiris",
+    "spring-boot",
+    "api"
+  ],
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "timezone": "browser",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "refresh": "30s",
+  "templating": {
+    "list": [
+      {
+        "name": "app",
+        "type": "query",
+        "label": "App",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
         },
-        {
-            "type": "timeseries",
-            "title": "JVM Heap (used / max)",
-            "gridPos": { "x": 4, "y": 0, "w": 10, "h": 8 },
-            "datasource": { "type": "prometheus", "uid": "prometheus" },
-            "targets": [
-                { "refId": "A", "expr": "sum(jvm_memory_used_bytes{area=\"heap\", application=\"lumiris-api\"})", "legendFormat": "used" },
-                { "refId": "B", "expr": "sum(jvm_memory_max_bytes{area=\"heap\", application=\"lumiris-api\"})", "legendFormat": "max" }
-            ],
-            "fieldConfig": { "defaults": { "unit": "bytes" } }
-        },
-        {
-            "type": "timeseries",
-            "title": "JVM GC pauses (rate / max)",
-            "gridPos": { "x": 14, "y": 0, "w": 10, "h": 8 },
-            "datasource": { "type": "prometheus", "uid": "prometheus" },
-            "targets": [
-                { "refId": "A", "expr": "sum(rate(jvm_gc_pause_seconds_sum{application=\"lumiris-api\"}[1m]))", "legendFormat": "pause rate" },
-                { "refId": "B", "expr": "max(jvm_gc_pause_seconds_max{application=\"lumiris-api\"})", "legendFormat": "pause max" }
-            ],
-            "fieldConfig": { "defaults": { "unit": "s" } }
-        },
-        {
-            "type": "timeseries",
-            "title": "HTTP requests/s by route",
-            "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
-            "datasource": { "type": "prometheus", "uid": "prometheus" },
-            "targets": [
-                { "refId": "A", "expr": "sum by (uri) (rate(http_server_requests_seconds_count{application=\"lumiris-api\"}[1m]))", "legendFormat": "{{uri}}" }
-            ],
-            "fieldConfig": { "defaults": { "unit": "reqps" } }
-        },
-        {
-            "type": "timeseries",
-            "title": "HTTP latency p50 / p95 / p99",
-            "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
-            "datasource": { "type": "prometheus", "uid": "prometheus" },
-            "targets": [
-                { "refId": "A", "expr": "histogram_quantile(0.50, sum by (le) (rate(http_server_requests_seconds_bucket{application=\"lumiris-api\"}[5m])))", "legendFormat": "p50" },
-                { "refId": "B", "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_requests_seconds_bucket{application=\"lumiris-api\"}[5m])))", "legendFormat": "p95" },
-                { "refId": "C", "expr": "histogram_quantile(0.99, sum by (le) (rate(http_server_requests_seconds_bucket{application=\"lumiris-api\"}[5m])))", "legendFormat": "p99" }
-            ],
-            "fieldConfig": { "defaults": { "unit": "s" } }
-        },
-        {
-            "type": "timeseries",
-            "title": "HTTP error rate (4xx / 5xx)",
-            "gridPos": { "x": 0, "y": 16, "w": 12, "h": 8 },
-            "datasource": { "type": "prometheus", "uid": "prometheus" },
-            "targets": [
-                { "refId": "A", "expr": "sum(rate(http_server_requests_seconds_count{application=\"lumiris-api\", status=~\"4..\"}[1m]))", "legendFormat": "4xx" },
-                { "refId": "B", "expr": "sum(rate(http_server_requests_seconds_count{application=\"lumiris-api\", status=~\"5..\"}[1m]))", "legendFormat": "5xx" }
-            ],
-            "fieldConfig": { "defaults": { "unit": "reqps" } }
-        },
-        {
-            "type": "timeseries",
-            "title": "DB connections (active / idle)",
-            "gridPos": { "x": 12, "y": 16, "w": 12, "h": 8 },
-            "datasource": { "type": "prometheus", "uid": "prometheus" },
-            "targets": [
-                { "refId": "A", "expr": "hikaricp_connections_active{application=\"lumiris-api\"}", "legendFormat": "active" },
-                { "refId": "B", "expr": "hikaricp_connections_idle{application=\"lumiris-api\"}", "legendFormat": "idle" },
-                { "refId": "C", "expr": "hikaricp_connections_pending{application=\"lumiris-api\"}", "legendFormat": "pending" }
-            ]
-        },
-        {
-            "type": "timeseries",
-            "title": "Redis commands/s",
-            "gridPos": { "x": 0, "y": 24, "w": 12, "h": 8 },
-            "datasource": { "type": "prometheus", "uid": "prometheus" },
-            "targets": [
-                { "refId": "A", "expr": "sum by (command) (rate(lettuce_command_completion_seconds_count{application=\"lumiris-api\"}[1m]))", "legendFormat": "{{command}}" }
-            ]
-        },
-        {
-            "type": "timeseries",
-            "title": "Web Vitals — count by name/rating",
-            "gridPos": { "x": 12, "y": 24, "w": 12, "h": 8 },
-            "datasource": { "type": "prometheus", "uid": "prometheus" },
-            "targets": [
-                { "refId": "A", "expr": "sum by (name, rating) (rate(web_vitals_total{app=~\"$app\"}[5m]))", "legendFormat": "{{name}} / {{rating}}" }
-            ]
-        },
-        {
-            "type": "timeseries",
-            "title": "Web Vitals — distribution avg by metric",
-            "gridPos": { "x": 0, "y": 32, "w": 12, "h": 8 },
-            "datasource": { "type": "prometheus", "uid": "prometheus" },
-            "targets": [
-                { "refId": "A", "expr": "sum by (name) (rate(web_vitals_value_sum{app=~\"$app\"}[5m])) / sum by (name) (rate(web_vitals_value_count{app=~\"$app\"}[5m]))", "legendFormat": "{{name}} avg" }
-            ]
+        "query": "label_values(web_vitals_total, app)",
+        "includeAll": true,
+        "multi": true,
+        "current": {
+          "selected": false,
+          "text": "All",
+          "value": "$__all"
         }
+      }
     ]
+  },
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Storage Health",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(up{job=\"lumiris-api\"})"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": ""
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value_and_name"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "DOWN",
+                  "color": "red"
+                }
+              }
+            },
+            {
+              "type": "value",
+              "options": {
+                "1": {
+                  "text": "UP",
+                  "color": "green"
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          }
+        }
+      },
+      "id": 1
+    },
+    {
+      "type": "timeseries",
+      "title": "JVM Heap (used / max)",
+      "gridPos": {
+        "x": 4,
+        "y": 0,
+        "w": 10,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(jvm_memory_used_bytes{area=\"heap\", application=\"lumiris-api\"})",
+          "legendFormat": "used"
+        },
+        {
+          "refId": "B",
+          "expr": "sum(jvm_memory_max_bytes{area=\"heap\", application=\"lumiris-api\"})",
+          "legendFormat": "max"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        }
+      },
+      "id": 2
+    },
+    {
+      "type": "timeseries",
+      "title": "JVM GC pauses (rate / max)",
+      "gridPos": {
+        "x": 14,
+        "y": 0,
+        "w": 10,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(jvm_gc_pause_seconds_sum{application=\"lumiris-api\"}[1m]))",
+          "legendFormat": "pause rate"
+        },
+        {
+          "refId": "B",
+          "expr": "max(jvm_gc_pause_seconds_max{application=\"lumiris-api\"})",
+          "legendFormat": "pause max"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        }
+      },
+      "id": 3
+    },
+    {
+      "type": "timeseries",
+      "title": "HTTP requests/s by route",
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (uri) (rate(http_server_requests_seconds_count{application=\"lumiris-api\"}[1m]))",
+          "legendFormat": "{{uri}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        }
+      },
+      "id": 4
+    },
+    {
+      "type": "timeseries",
+      "title": "HTTP latency p50 / p95 / p99",
+      "gridPos": {
+        "x": 12,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(http_server_requests_seconds_bucket{application=\"lumiris-api\"}[5m])))",
+          "legendFormat": "p50"
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_requests_seconds_bucket{application=\"lumiris-api\"}[5m])))",
+          "legendFormat": "p95"
+        },
+        {
+          "refId": "C",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(http_server_requests_seconds_bucket{application=\"lumiris-api\"}[5m])))",
+          "legendFormat": "p99"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        }
+      },
+      "id": 5
+    },
+    {
+      "type": "timeseries",
+      "title": "HTTP error rate (4xx / 5xx)",
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(http_server_requests_seconds_count{application=\"lumiris-api\", status=~\"4..\"}[1m]))",
+          "legendFormat": "4xx"
+        },
+        {
+          "refId": "B",
+          "expr": "sum(rate(http_server_requests_seconds_count{application=\"lumiris-api\", status=~\"5..\"}[1m]))",
+          "legendFormat": "5xx"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        }
+      },
+      "id": 6
+    },
+    {
+      "type": "timeseries",
+      "title": "DB connections (active / idle)",
+      "gridPos": {
+        "x": 12,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "hikaricp_connections_active{application=\"lumiris-api\"}",
+          "legendFormat": "active"
+        },
+        {
+          "refId": "B",
+          "expr": "hikaricp_connections_idle{application=\"lumiris-api\"}",
+          "legendFormat": "idle"
+        },
+        {
+          "refId": "C",
+          "expr": "hikaricp_connections_pending{application=\"lumiris-api\"}",
+          "legendFormat": "pending"
+        }
+      ],
+      "id": 7
+    },
+    {
+      "type": "timeseries",
+      "title": "Redis commands/s",
+      "gridPos": {
+        "x": 0,
+        "y": 24,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (command) (rate(lettuce_command_completion_seconds_count{application=\"lumiris-api\"}[1m]))",
+          "legendFormat": "{{command}}"
+        }
+      ],
+      "id": 8
+    }
+  ]
 }

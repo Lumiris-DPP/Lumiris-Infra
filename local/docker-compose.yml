@@ -35,7 +35,10 @@ services:
       - traefik.http.routers.traefik.middlewares=traefik-auth@file
 
   postgres:
-    image: postgres:${POSTGRES_VERSION:-17-alpine}
+    # postgis/postgis, not plain postgres: the repairer network migration (V51) uses PostGIS
+    # types (ST_MakePoint) for geolocated search — plain postgres has no such extension to install.
+    image: postgis/postgis:${POSTGRES_VERSION:-17-3.5}
+    platform: linux/amd64
     container_name: lumiris-postgres
     restart: unless-stopped
     environment:

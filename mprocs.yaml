@@ -3,11 +3,12 @@ procs:
     cwd: local
     shell: docker compose up
 
-  # Spring Boot API (port 8080). Sources .env (dont FLYWAY_LOCATIONS=…,classpath:db/seed)
-  # → Flyway applique le schéma + le seed de démo au démarrage : la DB est peuplée.
+  # Spring Boot API (port 8080). Sources .env puis .env.local (mêmes règles que le Makefile du
+  # backend : .env.local surcharge — c'est là que vivent les vraies valeurs locales, dont
+  # FLYWAY_LOCATIONS=…,classpath:db/seed) → Flyway applique le schéma + le seed de démo au démarrage.
   backend:
     cwd: ../Lumiris-Backend
-    shell: "if [ -f .env ]; then set -a; . ./.env; set +a; fi; exec ./mvnw spring-boot:run"
+    shell: "set -a; [ -f .env ] && . ./.env; [ -f .env.local ] && . ./.env.local; set +a; exec ./mvnw spring-boot:run"
 
   # Fronts WEB uniquement : site (3000) · admin (3001) · client (3003).
   # Le mobile est exclu ici — il tourne en desktop natif dans le proc `mobile` ci-dessous.
@@ -24,4 +25,4 @@ procs:
 
   stripe:
     cwd: ../Lumiris-Backend
-    shell: 'if [ -f .env ]; then set -a; . ./.env; set +a; fi; command -v stripe >/dev/null 2>&1 || { echo ''[stripe] CLI non installé — https://docs.stripe.com/stripe-cli''; exec sleep infinity; }; [ -n "$STRIPE_SECRET_KEY" ] || { echo ''[stripe] STRIPE_SECRET_KEY absent du .env''; exec sleep infinity; }; exec stripe listen --api-key "$STRIPE_SECRET_KEY" --forward-to localhost:8080/api/stripe/webhook'
+    shell: 'set -a; [ -f .env ] && . ./.env; [ -f .env.local ] && . ./.env.local; set +a; command -v stripe >/dev/null 2>&1 || { echo ''[stripe] CLI non installé — https://docs.stripe.com/stripe-cli''; exec sleep infinity; }; [ -n "$STRIPE_SECRET_KEY" ] || { echo ''[stripe] STRIPE_SECRET_KEY absent du .env''; exec sleep infinity; }; exec stripe listen --api-key "$STRIPE_SECRET_KEY" --forward-to localhost:8080/api/stripe/webhook'

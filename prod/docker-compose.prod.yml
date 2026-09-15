@@ -77,7 +77,7 @@ services:
     logging: *default-logging
 
   minio:
-    image: minio/minio:${MINIO_VERSION:-RELEASE.2024-11-07T00-52-20Z}
+    image: quay.io/minio/minio:${MINIO_VERSION:-RELEASE.2024-11-07T00-52-20Z}
     container_name: lumiris-minio
     <<: *restart
     command: ["server", "/data", "--console-address", ":9001"]

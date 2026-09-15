@@ -46,6 +46,15 @@ http:
       tls:
         certResolver: letsencrypt
 
+    # S3 API de MinIO (port 9000), pas la console d'administration (9001) : sert les
+    # fichiers via les URLs présignées que l'API signe avec ce même hôte public.
+    storage:
+      rule: "Host(`minio.lumiris.eu`)"
+      entryPoints: [websecure]
+      service: storage
+      tls:
+        certResolver: letsencrypt
+
   services:
     site:
       loadBalancer:
@@ -75,3 +84,8 @@ http:
           path: /actuator/health/readiness
           interval: "15s"
           timeout: "5s"
+
+    storage:
+      loadBalancer:
+        servers:
+          - url: "http://lumiris-minio:9000"

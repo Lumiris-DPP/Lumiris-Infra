@@ -81,16 +81,19 @@ rester alignés.
 | api         | `api.lumiris.local`     | 8080      | 8080           | Backend `Dockerfile:EXPOSE 8080` · `Makefile:API_PORT` · `prod/compose:lumiris-api` |
 | postgres    | —                       | 5432      | 5432           | `local/docker-compose.yml` (POSTGRES_PORT)                                          |
 | redis       | —                       | 6379      | 6379           | `local/docker-compose.yml` (REDIS_PORT)                                             |
-| minio-s3    | `cdn.lumiris.local`     | 9000      | 9000           | `local/docker-compose.yml` (MINIO_API_PORT)                                         |
-| minio-cons. | `minio.lumiris.local`   | 9001      | 9001           | `local/docker-compose.yml` (MINIO_CONSOLE_PORT)                                     |
+| minio-s3    | `cdn.lumiris.local`     | 9000      | 9000           | `local/docker-compose.yml` (MINIO_API_PORT) · `prod/traefik:storage`                |
+| minio-cons. | `minio.lumiris.local`   | 9001      | 9001           | `local/docker-compose.yml` (MINIO_CONSOLE_PORT) — jamais exposé en prod             |
 | mailhog     | `mailhog.lumiris.local` | 1025/8025 | 1025/8025      | `local/docker-compose.yml`                                                          |
 | otlp http   | —                       | 4318      | 4318           | OTel collector (profile monitoring)                                                 |
 | traefik     | `traefik.lumiris.local` | 80/443    | 80/443         | `local/docker-compose.yml` (entrypoints)                                            |
 
 **Variables d'env** (Lumiris-Infra/local/.env) qui pilotent les ports exposés :
 `POSTGRES_PORT`, `REDIS_PORT`, `MINIO_API_PORT`, `MINIO_CONSOLE_PORT`. La prod
-(`prod/docker-compose.prod.yml`) n'expose **pas** ces ports — postgres/redis/minio
-y sont des services managés externes.
+(`prod/docker-compose.prod.yml`) n'expose **aucun** de ces ports sur l'hôte :
+postgres/redis/minio y tournent on-box, joignables par le seul réseau interne.
+Seule exception, l'API S3 de MinIO, publiée par Traefik sur `minio.lumiris.eu`
+(routeur `storage`) : les URLs présignées doivent être signées avec un hôte qu'un
+navigateur peut atteindre, d'où `MINIO_PUBLIC_ENDPOINT` côté API.
 
 ## CORS (cross-référence Backend ↔ Front)
 

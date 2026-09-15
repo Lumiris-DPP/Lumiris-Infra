@@ -82,7 +82,7 @@ jobs:
             fi
           }
           check "${REGISTRY}/${NAMESPACE}/lumiris-api:${API_TAG}"
-          for img in lumiris-site lumiris-app lumiris-admin; do
+          for img in lumiris-site lumiris-app lumiris-admin lumiris-mobile; do
             check "${REGISTRY}/${NAMESPACE}/${img}:${FRONT_TAG}"
           done
           [[ "${fail}" -eq 0 ]] || {
@@ -249,6 +249,7 @@ jobs:
           probe "https://${DOMAIN}/"
           probe "https://app.${DOMAIN}/"
           probe "https://admin.${DOMAIN}/"
+          probe "https://mobile.${DOMAIN}/"
           probe "https://api.${DOMAIN}/actuator/health/readiness"
           exit "${fail}"
 

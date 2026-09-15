@@ -26,3 +26,11 @@ http:
         average: 100
         period: 1m
         burst: 50
+
+    # Overrides the entrypoint-wide security-headers policy, which denies camera
+    # and geolocation: the web app needs both (QR scanner, Local hub map).
+    mobile-headers:
+      headers:
+        permissionsPolicy: "camera=(self), geolocation=(self), microphone=()"
+        customResponseHeaders:
+          X-Robots-Tag: "noindex, nofollow"

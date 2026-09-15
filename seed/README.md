@@ -1,43 +1,65 @@
 # seed/
 
-Production seed data — idempotent SQL applied once after the first migration
-runs against an empty database. Designed to be safe to re-run: every statement
-uses `ON CONFLICT DO NOTHING` or guarded `IF NOT EXISTS` blocks, and an
-`_seed_audit` table records which file ran when.
+Comptes nommés de production, appliqués une fois après la première migration
+Flyway. Idempotent : un compte déjà présent n'est jamais écrasé, donc son mot de
+passe survit à une réexécution.
 
-## Files
+## Fichiers
 
-- `001_prod_admin.sql` — required. First admin user (email + bcrypt'd password from env vars).
-- `002_plans.sql` — required. Plan reference data (FREE / ARTISAN / ENTERPRISE) if the table exists.
-- `003_demo_artisan.sql` — optional. One public demo artisan; remove the file (or wrap in `-- DISABLED`) for "real prod".
+- `001_accounts.sql` — les quatre comptes (`ADMIN`, `REPAIRER`, `ARTISAN`,
+  `CONSUMER`) plus le profil artisan associé, KYB pré-validé.
+- `apply-seed.sh` — génère les mots de passe, applique le SQL, affiche les
+  identifiants une seule fois.
 
-## Running
+## Exécution
 
 ```bash
-./seed/apply-seed.sh prod
+./seed/apply-seed.sh prod    # lit prod/.env.prod
+./seed/apply-seed.sh local   # lit local/.env
 ```
 
-The script:
+Le script parle à `psql` **dans le conteneur `lumiris-postgres`** : en prod la
+base n'expose aucun port hôte, c'est le seul chemin d'accès. Il faut donc le
+lancer depuis le serveur (ou via `ansible`), stack démarrée.
 
-1. Loads `SPRING_DATASOURCE_*` from Infisical (`infisical export --env=prod`).
-2. Generates a fresh `SEED_ADMIN_PASSWORD` (`openssl rand -base64 32`).
-3. Bcrypts it (cost 12) via `htpasswd -nbB` so Spring Security accepts it
-   (the `$2a$` flavour).
-4. For each `00*.sql`: `psql -v ON_ERROR_STOP=1 -v admin_email=… -v admin_pw_hash=…`.
-5. Pushes `SEED_ADMIN_PASSWORD_GENERATED` to Infisical so a human can fetch it
-   exactly once, then deletes it.
-6. `shred`s temporary files holding the password.
-7. Prints next-step instructions (rotate the password, delete the Infisical entry).
+Si `prod/.env.prod` est absent, le déchiffrer d'abord :
 
-## Idempotency
-
-Every SQL file ends with:
-
-```sql
-INSERT INTO _seed_audit (filename, applied_at)
-VALUES ('001_prod_admin.sql', NOW())
-ON CONFLICT (filename) DO NOTHING;
+```bash
+sops -d --input-type dotenv --output-type dotenv prod/secrets/prod.env.sops > prod/.env.prod
 ```
 
-`_seed_audit` is created by `apply-seed.sh` before any file runs, so the second
-run is a series of no-ops.
+## Identités
+
+Adresses et noms par défaut, surchargeables par l'environnement :
+
+| Rôle       | Variable email        | Défaut                    | Variable nom         | Défaut         |
+| ---------- | --------------------- | ------------------------- | -------------------- | -------------- |
+| `ADMIN`    | `SEED_ADMIN_EMAIL`    | `contact@lumiris.eu`      | `SEED_ADMIN_NAME`    | `Juba Aitadda` |
+| `REPAIRER` | `SEED_REPAIRER_EMAIL` | `gaoubak@gmail.com`       | `SEED_REPAIRER_NAME` | `Kader`        |
+| `ARTISAN`  | `SEED_ARTISAN_EMAIL`  | `adrien2098@hotmail.fr`   | `SEED_ARTISAN_NAME`  | `Adrien`       |
+| `CONSUMER` | `SEED_CONSUMER_EMAIL` | `rijenththedon@gmail.com` | `SEED_CONSUMER_NAME` | `Rijenth`      |
+
+`SEED_ARTISAN_SIRET` surcharge le SIRET du profil artisan.
+
+Les adresses sont forcées en minuscules, côté script et côté SQL : `AuthService.normalizeEmail`
+applique `trim().toLowerCase()` avant toute recherche, donc une majuscule stockée telle quelle
+rendrait le compte impossible à connecter.
+
+## Mots de passe
+
+20 caractères alphanumériques tirés de `/dev/urandom`, hachés par `pgcrypto`
+(`crypt(..., gen_salt('bf', 10))` → `$2a$`, la variante attendue par
+`BCryptPasswordEncoder`). Ils ne transitent par aucun fichier : le script les
+affiche puis les oublie. À ranger dans un gestionnaire de mots de passe
+immédiatement, et à faire changer par chaque titulaire à la première connexion.
+
+Une réexécution n'écrase rien : les comptes déjà présents sont signalés
+`(compte préexistant)` au lieu d'un mot de passe. Pour réinitialiser un mot de
+passe, supprimer la ligne `users` correspondante puis relancer.
+
+## Ce que le seed ne fait pas
+
+L'artisan est créé **sans abonnement**. La création de passeports exige un
+abonnement ATELIER actif (`QuotaService`), donc le titulaire doit passer par le
+Checkout Stripe. C'est volontaire : l'abonnement est un objet Stripe, le
+fabriquer en base créerait un état que le webhook ne saurait pas réconcilier.

@@ -30,6 +30,14 @@ http:
       tls:
         certResolver: letsencrypt
 
+    mobile:
+      rule: "Host(`mobile.lumiris.eu`)"
+      entryPoints: [websecure]
+      service: mobile
+      middlewares: [mobile-headers]
+      tls:
+        certResolver: letsencrypt
+
     api:
       rule: "Host(`api.lumiris.eu`)"
       entryPoints: [websecure]
@@ -53,6 +61,11 @@ http:
       loadBalancer:
         servers:
           - url: "http://lumiris-admin:3001"
+
+    mobile:
+      loadBalancer:
+        servers:
+          - url: "http://lumiris-mobile:3002"
 
     api:
       loadBalancer:

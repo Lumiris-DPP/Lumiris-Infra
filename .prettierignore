@@ -10,3 +10,4 @@ bench/out
 # Gitignored working notes — absent from CI checkouts, so never gate on them.
 docs/
 context/
+tasks/

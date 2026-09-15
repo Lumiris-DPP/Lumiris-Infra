@@ -110,7 +110,6 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: prod
       SERVER_PORT: "8080"
-      MANAGEMENT_HEALTH_MAIL_ENABLED: "false"
       # Cap the JVM so it can't starve postgres/minio/fronts on a 3.8 GB box.
       JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=65 -XX:InitialRAMPercentage=30 -XX:+UseG1GC"
       # Datastore
@@ -145,12 +144,12 @@ services:
       STRIPE_PRODUCT_MAISON: ${STRIPE_PRODUCT_MAISON}
       STRIPE_PRODUCT_ATELIER_PLUS: ${STRIPE_PRODUCT_ATELIER_PLUS}
       STRIPE_PRODUCT_LOCAL: ${STRIPE_PRODUCT_LOCAL}
-      # Mail
-      MAIL_HOST: ${MAIL_HOST}
-      MAIL_PORT: ${MAIL_PORT:-587}
-      MAIL_USERNAME: ${MAIL_USERNAME}
-      MAIL_PASSWORD: ${MAIL_PASSWORD}
-      MAIL_FROM: ${MAIL_FROM:-no-reply@lumiris.eu}
+      RESEND_API_KEY: ${RESEND_API_KEY}
+      MAIL_FROM: ${MAIL_FROM}
+      FRONTEND_URL: ${FRONTEND_URL}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY}
+      VAPID_SUBJECT: ${VAPID_SUBJECT}
       # Blockchain (optional; anchoring fails silently if unfunded)
       BLOCKCHAIN_RPC_URL: ${BLOCKCHAIN_RPC_URL}
       BLOCKCHAIN_WALLET_PRIVATE_KEY: ${BLOCKCHAIN_WALLET_PRIVATE_KEY}
@@ -239,6 +238,23 @@ services:
     deploy:
       resources:
         limits: { cpus: "1.0", memory: 320M }
+    logging: *default-logging
+
+  lumiris-mobile:
+    image: ${REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-lumiris-dpp}/lumiris-mobile:${FRONT_IMAGE_TAG:?set FRONT_IMAGE_TAG}
+    container_name: lumiris-mobile
+    <<: *restart
+    networks: [lumiris_prod]
+    depends_on: [lumiris-api]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3002/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 128M }
     logging: *default-logging
 
 networks:

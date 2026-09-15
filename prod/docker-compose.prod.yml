@@ -36,7 +36,7 @@ services:
 
   # ── Datastores ──────────────────────────────────────────────────────────────
   postgres:
-    image: postgres:${POSTGRES_VERSION:-17-alpine}
+    image: postgis/postgis:${POSTGRES_VERSION:-17-3.5-alpine}
     container_name: lumiris-postgres
     <<: *restart
     environment:
@@ -249,7 +249,7 @@ services:
     networks: [lumiris_prod]
     depends_on: [lumiris-api]
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3002/"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3002/"]
       interval: 15s
       timeout: 5s
       retries: 5

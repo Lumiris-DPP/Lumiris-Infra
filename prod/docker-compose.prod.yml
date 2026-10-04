@@ -78,6 +78,9 @@ services:
 
   minio:
     image: quay.io/minio/minio:${MINIO_VERSION:-RELEASE.2024-11-07T00-52-20Z}
+    # quay.io ne sert plus cette version (401 depuis le 4 octobre 2026) : on garde l'image déjà
+    # présente sur le serveur, sinon `compose pull` échoue et bloque tout le déploiement.
+    pull_policy: missing
     container_name: lumiris-minio
     <<: *restart
     command: ["server", "/data", "--console-address", ":9001"]

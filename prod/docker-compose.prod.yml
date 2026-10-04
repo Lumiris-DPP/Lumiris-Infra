@@ -77,10 +77,13 @@ services:
     logging: *default-logging
 
   minio:
-    image: quay.io/minio/minio:${MINIO_VERSION:-RELEASE.2024-11-07T00-52-20Z}
+    # MinIO ne publie plus RELEASE.2024-11-07T00-52-20Z (quay.io, Docker Hub et GHCR en 401) ; Bitnami
+    # sert le même commit (cefc43e4). root et /data gardent le volume existant lisible tel quel.
+    image: bitnamilegacy/minio:2024.11.7
     container_name: lumiris-minio
     <<: *restart
-    command: ["server", "/data", "--console-address", ":9001"]
+    user: "0:0"
+    command: ["minio", "server", "/data", "--console-address", ":9001"]
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}

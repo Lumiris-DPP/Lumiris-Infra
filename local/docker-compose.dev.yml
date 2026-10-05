@@ -1,7 +1,7 @@
 # Optional overlay to containerise Next.js apps; default `make all-up` runs bun dev on host for HMR.
 
 x-bun-defaults: &bun-defaults
-  image: oven/bun:1.1.38-alpine
+  image: oven/bun:1.4.2-alpine
   working_dir: /repo
   environment:
     NODE_ENV: development

@@ -82,7 +82,7 @@ services:
 
   minio:
     # Même image que la prod : MinIO ne publie plus RELEASE.2024-11-07T00-52-20Z, Bitnami sert le même commit.
-    image: bitnamilegacy/minio:2024.11.7
+    image: bitnamilegacy/minio:2025.5.24
     container_name: lumiris-minio
     restart: unless-stopped
     user: "0:0"
